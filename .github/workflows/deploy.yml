@@ -198,6 +198,7 @@ jobs:
             # First, fake any problematic migrations that already have tables created
             echo "Checking and faking problematic migrations..."
             docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate diveops 0008_settlement_record --fake 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate diveops 0009_eligibility_override --fake 2>/dev/null || true
 
             # Then run all migrations
             docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate --noinput || {
@@ -205,7 +206,7 @@ jobs:
             }
 
             # Create or update superuser
-            docker compose -f docker-compose.prod.yml exec -T web python -c "import os,django;os.environ.setdefault('DJANGO_SETTINGS_MODULE','diveops.settings.prod');django.setup();from django.contrib.auth import get_user_model;User=get_user_model();u=User.objects.filter(email='nestorwheelock@gmail.com').first();u.set_password('admin123') if u else None;u.save() if u else User.objects.create_superuser(email='nestorwheelock@gmail.com',password='admin123');print('Done')" || echo "Failed to create/update superuser"
+            docker compose -f docker-compose.prod.yml exec -T web python -c "import os,django;os.environ.setdefault('DJANGO_SETTINGS_MODULE','diveops.settings.prod');django.setup();from django.contrib.auth import get_user_model;User=get_user_model();u=User.objects.filter(email='nestorwheelock@gmail.com').first();(u.set_password('admin123'),u.save()) if u else User.objects.create_superuser(username='admin',email='nestorwheelock@gmail.com',password='admin123');print('Done')" || echo "Failed to create/update superuser"
 
             # Collect static files (use --clear to avoid permission issues)
             docker compose -f docker-compose.prod.yml exec -T web python manage.py collectstatic --noinput --clear || true
