@@ -12,10 +12,11 @@ ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
 
 # Security middleware settings
-SECURE_SSL_REDIRECT = True
+# SSL redirect can be disabled via env var until SSL is set up
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "true").lower() == "true"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = os.environ.get("SECURE_SSL_REDIRECT", "true").lower() == "true"
+CSRF_COOKIE_SECURE = os.environ.get("SECURE_SSL_REDIRECT", "true").lower() == "true"
 SECURE_HSTS_SECONDS = 31536000  # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
