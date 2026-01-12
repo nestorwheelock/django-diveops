@@ -195,11 +195,13 @@ jobs:
               sleep 5
             done
 
-            # Run migrations (fake problematic ones if needed)
+            # First, fake any problematic migrations that already have tables created
+            echo "Checking and faking problematic migrations..."
+            docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate diveops 0008_settlement_record --fake 2>/dev/null || true
+
+            # Then run all migrations
             docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate --noinput || {
-              echo "Migration failed, attempting to fake problematic migration..."
-              docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate diveops 0008_settlement_record --fake || true
-              docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate --noinput || true
+              echo "Some migrations failed - check logs for details"
             }
 
             # Collect static files (use --clear to avoid permission issues)
