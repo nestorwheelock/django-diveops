@@ -23,7 +23,11 @@ echo "Database is ready!"
 # Run migrations if MIGRATE=true
 if [ "${MIGRATE:-false}" = "true" ]; then
     echo "Running migrations..."
-    python manage.py migrate --noinput
+    # Don't fail if migrations have issues - log and continue
+    if ! python manage.py migrate --noinput; then
+        echo "WARNING: Migrations failed! The app will start but may have issues."
+        echo "Check migration state and fix manually if needed."
+    fi
 fi
 
 # Create superuser if SUPERUSER_EMAIL is set

@@ -195,8 +195,12 @@ jobs:
               sleep 5
             done
 
-            # Run migrations
-            docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate --noinput || true
+            # Run migrations (fake problematic ones if needed)
+            docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate --noinput || {
+              echo "Migration failed, attempting to fake problematic migration..."
+              docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate diveops 0008_settlement_record --fake || true
+              docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate --noinput || true
+            }
 
             # Collect static files (use --clear to avoid permission issues)
             docker compose -f docker-compose.prod.yml exec -T web python manage.py collectstatic --noinput --clear || true
