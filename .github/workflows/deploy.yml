@@ -205,7 +205,10 @@ jobs:
             }
 
             # Create or update superuser
-            docker compose -f docker-compose.prod.yml exec -T web python manage.py shell -c "
+            docker compose -f docker-compose.prod.yml exec -T web python -c "
+import os, django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'diveops.settings.prod')
+django.setup()
 from django.contrib.auth import get_user_model
 User = get_user_model()
 email = 'nestorwheelock@gmail.com'
@@ -216,10 +219,10 @@ if user:
     user.is_staff = True
     user.is_superuser = True
     user.save()
-    print(f'Superuser {email} password reset')
+    print('Superuser password reset')
 else:
     User.objects.create_superuser(email=email, password='admin123')
-    print(f'Superuser {email} created')
+    print('Superuser created')
 " || echo "Failed to create/update superuser"
 
             # Collect static files (use --clear to avoid permission issues)
