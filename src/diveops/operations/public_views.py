@@ -808,6 +808,21 @@ class PublicChatAPIView(View):
     VISITOR_COOKIE_NAME = "hd_visitor_id"
     VISITOR_COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year
 
+    def add_cors_headers(self, response, request):
+        """Add CORS headers for cross-origin requests (dev mode)."""
+        origin = request.headers.get("Origin", "")
+        if origin in ["http://localhost:8080", "http://127.0.0.1:8080"]:
+            response["Access-Control-Allow-Origin"] = origin
+            response["Access-Control-Allow-Credentials"] = "true"
+            response["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+
+    def options(self, request):
+        """Handle CORS preflight requests."""
+        response = JsonResponse({})
+        return self.add_cors_headers(response, request)
+
     def get_visitor_id(self, request):
         """Get or generate visitor ID from cookie."""
         visitor_id = request.COOKIES.get(self.VISITOR_COOKIE_NAME)
@@ -845,7 +860,7 @@ class PublicChatAPIView(View):
                 httponly=True,
                 samesite="Lax",
             )
-            return response
+            return self.add_cors_headers(response, request)
 
         # Find their conversation
         from django_communication.models import Conversation, ConversationStatus, Message
@@ -890,7 +905,7 @@ class PublicChatAPIView(View):
             httponly=True,
             samesite="Lax",
         )
-        return response
+        return self.add_cors_headers(response, request)
 
     def post(self, request):
         """Send a message from visitor.
@@ -901,13 +916,15 @@ class PublicChatAPIView(View):
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
+            response = JsonResponse({"error": "Invalid JSON"}, status=400)
+            return self.add_cors_headers(response, request)
 
         visitor_id = self.get_visitor_id(request)
         message_text = data.get("message", "").strip()
 
         if not message_text:
-            return JsonResponse({"error": "Message is required"}, status=400)
+            response = JsonResponse({"error": "Message is required"}, status=400)
+            return self.add_cors_headers(response, request)
 
         from django_parties.models import Person, LeadStatusEvent
         from django_communication.models import (
@@ -944,10 +961,11 @@ class PublicChatAPIView(View):
             first_name = data.get("first_name", "").strip()
 
             if not email or not first_name:
-                return JsonResponse({
+                response = JsonResponse({
                     "error": "First message requires email and first_name",
                     "needs_registration": True,
                 }, status=400)
+                return self.add_cors_headers(response, request)
 
             # Check if email already exists (different visitor_id)
             existing_person = Person.objects.filter(
@@ -1019,4 +1037,4 @@ class PublicChatAPIView(View):
             httponly=True,
             samesite="Lax",
         )
-        return response
+        return self.add_cors_headers(response, request)

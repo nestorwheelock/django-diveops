@@ -57,6 +57,56 @@ pub struct Block {
     pub data: serde_json::Value,
 }
 
+impl Block {
+    /// Get the content for rich_text blocks
+    pub fn content(&self) -> &str {
+        self.data
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get the text for heading blocks
+    pub fn text(&self) -> &str {
+        self.data
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get the URL for image/embed blocks
+    pub fn url(&self) -> &str {
+        self.data
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get the alt text for image blocks
+    pub fn alt(&self) -> &str {
+        self.data
+            .get("alt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get the caption for image blocks
+    pub fn caption(&self) -> &str {
+        self.data
+            .get("caption")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get the heading level (defaults to 2)
+    pub fn level(&self) -> i64 {
+        self.data
+            .get("level")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(2)
+    }
+}
+
 /// Published snapshot structure (matches Django's format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublishedSnapshot {

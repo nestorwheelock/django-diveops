@@ -1,32 +1,50 @@
-{# Block renderer - simple version for initial implementation #}
+{# Block renderer for content blocks #}
 <div class="cms-block cms-block--{{ block.block_type }} mb-6">
 {% if block.block_type == "rich_text" %}
-    <div class="prose max-w-none">{{ block.data|safe }}</div>
+    <div class="prose max-w-none">{{ block.content()|safe }}</div>
 
 {% else if block.block_type == "heading" %}
-    <h2 class="text-2xl font-bold mt-6 mb-3">{{ block.data }}</h2>
+    {% if block.level() == 1 %}
+    <h1 class="text-3xl font-bold mt-8 mb-4">{{ block.text() }}</h1>
+    {% else if block.level() == 2 %}
+    <h2 class="text-2xl font-bold mt-6 mb-3">{{ block.text() }}</h2>
+    {% else if block.level() == 3 %}
+    <h3 class="text-xl font-semibold mt-4 mb-2">{{ block.text() }}</h3>
+    {% else if block.level() == 4 %}
+    <h4 class="text-lg font-semibold mt-3 mb-2">{{ block.text() }}</h4>
+    {% else %}
+    <h5 class="text-base font-semibold mt-2 mb-1">{{ block.text() }}</h5>
+    {% endif %}
 
 {% else if block.block_type == "hero" %}
     <div class="bg-gray-800 text-white p-8 md:p-16 rounded-lg min-h-[300px] flex flex-col justify-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-4">Hero Block</h2>
+        <h2 class="text-3xl md:text-5xl font-bold mb-4">{{ block.text() }}</h2>
     </div>
 
 {% else if block.block_type == "cta" %}
     <div class="text-center my-8">
-        <a href="#" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors text-lg">
-            Call to Action
+        <a href="{{ block.url() }}" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors text-lg">
+            {{ block.text() }}
         </a>
     </div>
 
 {% else if block.block_type == "image" %}
     <figure class="my-8">
-        <img src="" alt="" class="rounded-lg max-w-full h-auto shadow-md">
+        <img src="{{ block.url() }}" alt="{{ block.alt() }}" class="rounded-lg max-w-full h-auto shadow-md">
+        {% if !block.caption().is_empty() %}
+        <figcaption class="text-sm text-gray-500 mt-2 text-center">{{ block.caption() }}</figcaption>
+        {% endif %}
     </figure>
 
 {% else if block.block_type == "divider" %}
     <hr class="my-8 border-gray-300">
 
+{% else if block.block_type == "embed" %}
+    <div class="my-8 aspect-video">
+        <iframe src="{{ block.url() }}" class="w-full h-full rounded-lg" frameborder="0" allowfullscreen></iframe>
+    </div>
+
 {% else %}
-    <!-- Block type: {{ block.block_type }} -->
+    <!-- Unknown block type: {{ block.block_type }} -->
 {% endif %}
 </div>

@@ -71,9 +71,9 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-diveops}
-      - BIND_ADDR=0.0.0.0:8080
-      - RUST_LOG=happydiving_web=debug,tower_http=debug
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      BIND_ADDR: 0.0.0.0:8080
+      RUST_LOG: happydiving_web=debug,tower_http=debug
     depends_on:
       db:
         condition: service_healthy

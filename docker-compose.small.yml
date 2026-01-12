@@ -96,6 +96,28 @@ services:
     networks:
       - diveops_network
 
+  rust:
+    image: ghcr.io/nestorwheelock/django-diveops-rust:latest
+    container_name: diveops_rust
+    environment:
+      - RUST_LOG=happydiving_web=info,tower_http=info
+      - BIND_ADDR=0.0.0.0:8080
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - static_data:/app/static:ro
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    expose:
+      - "8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - diveops_network
+
   nginx:
     image: nginx:alpine
     container_name: diveops_nginx
@@ -114,6 +136,7 @@ services:
           memory: 64M
     depends_on:
       - web
+      - rust
     restart: unless-stopped
     networks:
       - diveops_network

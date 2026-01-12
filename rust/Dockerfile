@@ -36,6 +36,9 @@ COPY --from=builder /app/target/release/happydiving-web /app/happydiving-web
 # Copy templates (Askama embeds at compile time, but keep for reference)
 COPY --from=builder /app/templates /app/templates
 
+# Copy static files
+COPY static /app/static
+
 # Set environment
 ENV RUST_LOG=happydiving_web=info,tower_http=info
 ENV BIND_ADDR=0.0.0.0:8080
