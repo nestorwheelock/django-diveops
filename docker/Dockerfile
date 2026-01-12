@@ -25,11 +25,47 @@ COPY requirements/base.txt requirements/prod.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r prod.txt
 
-# Install django-primitives packages from submodule
+# Install django-primitives packages from submodule IN DEPENDENCY ORDER
 COPY lib/django-primitives/packages/ /tmp/packages/
-RUN for pkg in /tmp/packages/django-*/; do \
-        pip install --no-cache-dir "$pkg"; \
-    done
+
+# Tier 0: Foundation (no dependencies)
+RUN pip install --no-cache-dir \
+    /tmp/packages/django-basemodels \
+    /tmp/packages/django-singleton \
+    /tmp/packages/django-sequence \
+    /tmp/packages/django-modules \
+    /tmp/packages/django-layers \
+    /tmp/packages/django-money
+
+# Tier 1: Identity (depends on foundation)
+RUN pip install --no-cache-dir \
+    /tmp/packages/django-parties \
+    /tmp/packages/django-rbac
+
+# Tier 2: Infrastructure (depends on foundation + identity)
+RUN pip install --no-cache-dir \
+    /tmp/packages/django-decisioning \
+    /tmp/packages/django-audit-log \
+    /tmp/packages/django-communication
+
+# Tier 3: Domain (depends on lower tiers)
+RUN pip install --no-cache-dir \
+    /tmp/packages/django-catalog \
+    /tmp/packages/django-encounters \
+    /tmp/packages/django-worklog \
+    /tmp/packages/django-geo \
+    /tmp/packages/django-ledger
+
+# Tier 4: Content (depends on domain + lower)
+RUN pip install --no-cache-dir \
+    /tmp/packages/django-documents \
+    /tmp/packages/django-notes \
+    /tmp/packages/django-agreements \
+    /tmp/packages/django-questionnaires \
+    /tmp/packages/django-cms-core
+
+# Tier 5: AI Services
+RUN pip install --no-cache-dir /tmp/packages/django-ai-services || true
 
 # ================================
 # Stage 2: Production image
