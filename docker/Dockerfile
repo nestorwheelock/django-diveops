@@ -53,6 +53,10 @@ RUN pip install --no-cache-dir --no-deps /tmp/packages/django-basemodels && \
     pip install --no-cache-dir --no-deps /tmp/packages/django-cms-core && \
     pip install --no-cache-dir --no-deps /tmp/packages/django-ai-services
 
+# Install django-portal-ui from lib/ (not a submodule, part of main repo)
+COPY lib/django-portal-ui/ /tmp/django-portal-ui/
+RUN pip install --no-cache-dir --no-deps /tmp/django-portal-ui
+
 # ================================
 # Stage 2: Production image
 # ================================
