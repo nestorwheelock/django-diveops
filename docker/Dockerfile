@@ -80,6 +80,7 @@ WORKDIR /app
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/app/src:$PYTHONPATH"
 
 # Copy application code
 COPY --chown=diveops:diveops src/ ./src/
