@@ -25,7 +25,7 @@ def index(request):
     """Homepage view."""
     if request.user.is_authenticated:
         if request.user.is_staff:
-            return redirect("staff:dashboard")
+            return redirect("diveops:excursion-list")
         return redirect("portal:dashboard")
 
     return render(request, "index.html")

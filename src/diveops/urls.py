@@ -32,13 +32,16 @@ urlpatterns = [
     path("portal/", include("diveops.operations.urls.customer", namespace="portal")),
 
     # Public pages (agreement signing, medical questionnaire)
-    path("sign/", include("diveops.operations.urls.public", namespace="sign")),
+    path("sign/", include("diveops.operations.urls.public")),
 
     # Store
     path("shop/", include("diveops.store.urls", namespace="store")),
 
     # Invoicing
     path("invoices/", include("diveops.invoicing.urls", namespace="invoicing")),
+
+    # Pricing
+    path("pricing/", include("diveops.pricing.urls")),
 
     # Homepage
     path("", index, name="index"),
