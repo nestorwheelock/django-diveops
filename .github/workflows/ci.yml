@@ -60,6 +60,8 @@ jobs:
           for pkg in lib/django-primitives/packages/django-*/; do
             pip install --no-deps -e "$pkg"
           done
+          # Install portal-ui from submodule
+          pip install --no-deps -e lib/django-portal-ui
 
       - name: Run migrations
         env:
