@@ -66,7 +66,7 @@ impl Block {
             .unwrap_or("")
     }
 
-    /// Get the text for heading blocks
+    /// Get the text for heading/cta blocks
     pub fn text(&self) -> &str {
         self.data
             .get("text")
@@ -74,7 +74,7 @@ impl Block {
             .unwrap_or("")
     }
 
-    /// Get the URL for image/embed blocks
+    /// Get the URL for image/embed/cta blocks
     pub fn url(&self) -> &str {
         self.data
             .get("url")
@@ -105,6 +105,74 @@ impl Block {
             .and_then(|v| v.as_i64())
             .unwrap_or(2)
     }
+
+    // Hero block fields
+    /// Get title for hero blocks
+    pub fn title(&self) -> &str {
+        self.data
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get subtitle for hero blocks
+    pub fn subtitle(&self) -> &str {
+        self.data
+            .get("subtitle")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get CTA text for hero blocks
+    pub fn cta_text(&self) -> &str {
+        self.data
+            .get("cta_text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get CTA URL for hero blocks
+    pub fn cta_url(&self) -> &str {
+        self.data
+            .get("cta_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// Get background image URL for hero blocks
+    pub fn background_image(&self) -> &str {
+        self.data
+            .get("background_image")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    // Image gallery
+    /// Get images array for gallery blocks (returns JSON string for template)
+    pub fn images_json(&self) -> String {
+        self.data
+            .get("images")
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "[]".to_string())
+    }
+
+    /// Get images as a vector of GalleryImage
+    pub fn images(&self) -> Vec<GalleryImage> {
+        self.data
+            .get("images")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// Image in a gallery
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GalleryImage {
+    pub url: String,
+    #[serde(default)]
+    pub alt: String,
+    #[serde(default)]
+    pub caption: String,
 }
 
 /// Published snapshot structure (matches Django's format)

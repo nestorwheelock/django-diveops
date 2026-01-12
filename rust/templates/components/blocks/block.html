@@ -17,13 +17,38 @@
     {% endif %}
 
 {% else if block.block_type == "hero" %}
-    <div class="bg-gray-800 text-white p-8 md:p-16 rounded-lg min-h-[300px] flex flex-col justify-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-4">{{ block.text() }}</h2>
+    <div class="relative bg-gradient-to-r from-blue-900 to-blue-700 text-white p-8 md:p-16 rounded-xl min-h-[400px] flex flex-col justify-center overflow-hidden"{% if !block.background_image().is_empty() %} style="background-image: url('{{ block.background_image() }}'); background-size: cover; background-position: center;"{% endif %}>
+        {% if !block.background_image().is_empty() %}
+        <div class="absolute inset-0 bg-black/50"></div>
+        {% endif %}
+        <div class="relative z-10 max-w-3xl">
+            <h1 class="text-4xl md:text-6xl font-bold mb-4 leading-tight">{{ block.title() }}</h1>
+            {% if !block.subtitle().is_empty() %}
+            <p class="text-xl md:text-2xl text-white/90 mb-8">{{ block.subtitle() }}</p>
+            {% endif %}
+            {% if !block.cta_text().is_empty() %}
+            <a href="{{ block.cta_url() }}" class="inline-block bg-white text-blue-900 px-8 py-4 rounded-lg font-bold text-lg hover:bg-blue-100 transition-colors shadow-lg">
+                {{ block.cta_text() }}
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+{% else if block.block_type == "image_gallery" %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 my-8">
+        {% for image in block.images() %}
+        <figure class="group relative overflow-hidden rounded-lg shadow-md hover:shadow-xl transition-shadow">
+            <img src="{{ image.url }}" alt="{{ image.alt }}" class="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300">
+            {% if !image.caption.is_empty() %}
+            <figcaption class="absolute bottom-0 left-0 right-0 bg-black/70 text-white p-3 text-sm">{{ image.caption }}</figcaption>
+            {% endif %}
+        </figure>
+        {% endfor %}
     </div>
 
 {% else if block.block_type == "cta" %}
-    <div class="text-center my-8">
-        <a href="{{ block.url() }}" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors text-lg">
+    <div class="text-center my-12 p-8 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl">
+        <a href="{{ block.url() }}" class="inline-block bg-blue-600 text-white px-10 py-4 rounded-lg font-bold text-xl hover:bg-blue-700 hover:scale-105 transition-all shadow-lg">
             {{ block.text() }}
         </a>
     </div>
