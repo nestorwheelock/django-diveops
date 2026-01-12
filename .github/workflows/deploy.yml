@@ -248,7 +248,14 @@ print('Chat view imported successfully')
             echo "=== Health Check ==="
             # Test Django admin endpoint
             sleep 5
-            docker compose -f docker-compose.prod.yml exec -T web python manage.py shell -c \"from django.contrib.auth import get_user_model; User=get_user_model(); print(f'Users: {User.objects.count()}')\" || echo "Health check failed!"
+            docker compose -f docker-compose.prod.yml exec -T web python -c "
+import django
+django.setup()
+from django.contrib.auth import get_user_model
+User = get_user_model()
+print('User count:', User.objects.count())
+print('Admin users:', User.objects.filter(is_superuser=True).count())
+" || echo "Health check failed!"
 
             echo "=== Final Container Status ==="
             docker compose -f docker-compose.prod.yml ps -a
