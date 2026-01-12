@@ -247,7 +247,7 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T web python -c "import django;django.setup();from django.test import Client;c=Client();r=c.get('/admin/login/');print('Status:',r.status_code);print('Content-Type:',r.get('Content-Type','N/A'))" || echo "Test client failed"
 
             echo "=== Testing HTTP Request to Django ==="
-            docker compose -f docker-compose.prod.yml exec -T web python -c "import requests;r=requests.get('http://localhost:8000/admin/login/',headers={'Host':'happydiving.mx'});print('Status:',r.status_code);print('Headers:',dict(r.headers));print('Body[:500]:',r.text[:500])" || echo "HTTP test failed"
+            docker compose -f docker-compose.prod.yml exec -T web python -c "exec('''from urllib.request import urlopen,Request\nfrom urllib.error import HTTPError,URLError\nreq=Request(\"http://localhost:8000/admin/login/\",headers={\"Host\":\"happydiving.mx\"})\ntry:\n r=urlopen(req);print(\"Status:200\");print(\"Body:\",r.read().decode()[:1000])\nexcept HTTPError as e:\n print(\"Status:\",e.code);print(\"Body:\",e.read().decode()[:1000])\nexcept URLError as e:\n print(\"Error:\",e)''')" || echo "HTTP test failed"
 
             echo "=== Web Container Errors ==="
             docker compose -f docker-compose.prod.yml logs --tail=100 web 2>&1 | grep -iE "error|traceback|exception" | head -20 || echo "No errors found"
