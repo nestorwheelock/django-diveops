@@ -237,5 +237,11 @@ jobs:
             sleep 5
             docker compose -f docker-compose.prod.yml exec -T web python -c "import django;django.setup();from django.contrib.auth import get_user_model;User=get_user_model();print('Users:',User.objects.count(),'Admins:',User.objects.filter(is_superuser=True).count())" || echo "Health check failed!"
 
+            echo "=== Testing Session and Admin Models ==="
+            docker compose -f docker-compose.prod.yml exec -T web python -c "import django;django.setup();from django.contrib.sessions.backends.db import SessionStore;print('Session imported');from django.contrib.admin.models import LogEntry;print('LogEntry imported');from django.contrib.contenttypes.models import ContentType;print('ContentType count:',ContentType.objects.count())" || echo "Admin model test failed"
+
+            echo "=== Web Container Errors ==="
+            docker compose -f docker-compose.prod.yml logs --tail=100 web 2>&1 | grep -iE "error|traceback|exception" | head -20 || echo "No errors found"
+
             echo "=== Final Container Status ==="
             docker compose -f docker-compose.prod.yml ps -a
