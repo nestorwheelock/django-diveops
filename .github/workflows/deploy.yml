@@ -228,34 +228,14 @@ jobs:
             docker compose -f docker-compose.prod.yml logs --tail=20 rust
 
             echo "=== Testing Django Models ==="
-            docker compose -f docker-compose.prod.yml exec -T web python -c "
-import django
-django.setup()
-from django_parties.models import Person
-print('Person model loaded successfully')
-print('Person fields:', [f.name for f in Person._meta.fields[:10]])
-print('Person count:', Person.objects.count())
-" || echo "Model test failed - check traceback above"
+            docker compose -f docker-compose.prod.yml exec -T web python -c "import django;django.setup();from django_parties.models import Person;print('Person model loaded');print('Fields:',Person._meta.get_field('visitor_id'));print('Count:',Person.objects.count())" || echo "Model test failed"
 
             echo "=== Testing Chat API ==="
-            docker compose -f docker-compose.prod.yml exec -T web python -c "
-import django
-django.setup()
-from diveops.operations.public_views import PublicChatAPIView
-print('Chat view imported successfully')
-" || echo "Chat view import failed - check traceback above"
+            docker compose -f docker-compose.prod.yml exec -T web python -c "import django;django.setup();from diveops.operations.public_views import PublicChatAPIView;print('Chat view loaded OK')" || echo "Chat view import failed"
 
             echo "=== Health Check ==="
-            # Test Django admin endpoint
             sleep 5
-            docker compose -f docker-compose.prod.yml exec -T web python -c "
-import django
-django.setup()
-from django.contrib.auth import get_user_model
-User = get_user_model()
-print('User count:', User.objects.count())
-print('Admin users:', User.objects.filter(is_superuser=True).count())
-" || echo "Health check failed!"
+            docker compose -f docker-compose.prod.yml exec -T web python -c "import django;django.setup();from django.contrib.auth import get_user_model;User=get_user_model();print('Users:',User.objects.count(),'Admins:',User.objects.filter(is_superuser=True).count())" || echo "Health check failed!"
 
             echo "=== Final Container Status ==="
             docker compose -f docker-compose.prod.yml ps -a
