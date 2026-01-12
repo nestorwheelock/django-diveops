@@ -1,9 +1,56 @@
 """Core middleware for DiveOps."""
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.utils import translation
 
 IMPERSONATE_SESSION_KEY = "_impersonate_user_id"
 IMPERSONATE_ORIGINAL_USER_KEY = "_impersonate_original_user_id"
+
+
+class DomainLanguageMiddleware:
+    """Set language based on the request domain.
+
+    Maps domains to languages:
+    - happydiving.mx -> English (en)
+    - buceofeliz.com -> Spanish (es)
+
+    This middleware runs BEFORE LocaleMiddleware to set the language
+    based on the domain, overriding browser/cookie preferences.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.domain_languages = getattr(settings, "DOMAIN_LANGUAGES", {})
+
+    def __call__(self, request):
+        host = request.get_host().split(":")[0].lower()
+        lang = None
+
+        for domain, domain_lang in self.domain_languages.items():
+            if domain in host:
+                lang = domain_lang
+                break
+
+        if lang:
+            translation.activate(lang)
+            request.LANGUAGE_CODE = lang
+
+        response = self.get_response(request)
+
+        if lang:
+            response.set_cookie(
+                settings.LANGUAGE_COOKIE_NAME,
+                lang,
+                max_age=settings.LANGUAGE_COOKIE_AGE,
+                path=settings.LANGUAGE_COOKIE_PATH,
+                domain=settings.LANGUAGE_COOKIE_DOMAIN,
+                secure=settings.LANGUAGE_COOKIE_SECURE,
+                httponly=settings.LANGUAGE_COOKIE_HTTPONLY,
+                samesite=settings.LANGUAGE_COOKIE_SAMESITE,
+            )
+
+        return response
 
 
 class ImpersonationMiddleware:

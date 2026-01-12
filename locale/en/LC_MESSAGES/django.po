@@ -1,0 +1,81 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-12 03:19+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+msgid "English"
+msgstr ""
+
+msgid "Spanish"
+msgstr ""
+
+msgid "Dashboard"
+msgstr ""
+
+msgid "Logout"
+msgstr ""
+
+msgid "Login"
+msgstr ""
+
+msgid "All rights reserved."
+msgstr ""
+
+msgid "Staff Portal"
+msgstr ""
+
+msgid "No navigation items configured."
+msgstr ""
+
+msgid "Impersonating"
+msgstr ""
+
+msgid "Profile"
+msgstr ""
+
+msgid "Stop"
+msgstr ""
+
+msgid "Log out"
+msgstr ""
+
+msgid "Logged Out"
+msgstr ""
+
+msgid "You have been logged out."
+msgstr ""
+
+msgid "Thank you for using DiveOps."
+msgstr ""
+
+msgid "Login Again"
+msgstr ""
+
+msgid "DiveOps Login"
+msgstr ""
+
+msgid "Invalid email or password."
+msgstr ""
+
+msgid "Email"
+msgstr ""
+
+msgid "Password"
+msgstr ""
+
+msgid "Sign In"
+msgstr ""

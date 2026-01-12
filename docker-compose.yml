@@ -42,6 +42,7 @@ services:
       - ./lib/django-primitives/packages:/lib/packages:ro
       - /home/nwheelo/projects/django-portal-ui:/lib/django-portal-ui
       - ./media:/app/media
+      - ./locale:/app/locale
     ports:
       - "8000:8000"
     environment:

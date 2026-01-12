@@ -1,6 +1,7 @@
 {% extends "diveops/staff/_base.html" %}
+{% load i18n %}
 
-{% block title %}Logged Out - DiveOps{% endblock %}
+{% block title %}{% translate "Logged Out" %} - DiveOps{% endblock %}
 
 {% block content %}
 <div class="container mt-5">
@@ -8,9 +9,9 @@
         <div class="col-md-6">
             <div class="card shadow">
                 <div class="card-body text-center">
-                    <h4>You have been logged out.</h4>
-                    <p class="text-muted">Thank you for using DiveOps.</p>
-                    <a href="{% url 'login' %}" class="btn btn-primary">Login Again</a>
+                    <h4>{% translate "You have been logged out." %}</h4>
+                    <p class="text-muted">{% translate "Thank you for using DiveOps." %}</p>
+                    <a href="{% url 'login' %}" class="btn btn-primary">{% translate "Login Again" %}</a>
                 </div>
             </div>
         </div>

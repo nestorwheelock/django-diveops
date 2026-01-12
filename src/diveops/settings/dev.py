@@ -7,7 +7,7 @@ from .base import *  # noqa: F401, F403
 DEBUG = True
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0", "happydiving.mx", "buceofeliz.com"]
 
 # Development database (use local PostgreSQL or Docker)
 DATABASES["default"]["HOST"] = os.environ.get("POSTGRES_HOST", "localhost")  # noqa: F405

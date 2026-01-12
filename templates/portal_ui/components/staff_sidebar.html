@@ -1,4 +1,4 @@
-{% load portal_ui_tags %}
+{% load portal_ui_tags i18n %}
 {# Staff portal navigation sidebar #}
 <style>
 #staff-sidebar { background-color: #111827 !important; }
@@ -20,7 +20,7 @@
     <!-- Sidebar Header -->
     <div class="nav-header flex items-center justify-between h-16 px-4">
         <a href="{{ portal_ui.staff_prefix }}" class="flex items-center space-x-3" x-show="!collapsed">
-            <span class="text-lg font-bold text-white">Staff Portal</span>
+            <span class="text-lg font-bold text-white">{% translate "Staff Portal" %}</span>
         </a>
         <button @click="collapsed = !collapsed"
                 class="p-2 rounded-lg hover:bg-gray-700 lg:block hidden"
@@ -55,7 +55,7 @@
         </div>
         {% empty %}
         <div class="px-4 py-2 text-sm text-gray-400">
-            No navigation items configured.
+            {% translate "No navigation items configured." %}
         </div>
         {% endfor %}
     </nav>
@@ -70,18 +70,18 @@
             <div class="ml-3" x-show="!collapsed">
                 <p class="text-sm font-medium text-white truncate">{{ user.get_full_name|default:user.email }}</p>
                 {% if is_impersonating %}
-                <p class="text-xs text-amber-400">Impersonating</p>
+                <p class="text-xs text-amber-400">{% translate "Impersonating" %}</p>
                 {% endif %}
                 <div class="flex items-center space-x-2 text-xs text-gray-400">
-                    <a href="{% url 'profile:view' %}" class="hover:text-white">Profile</a>
+                    <a href="{% url 'profile:view' %}" class="hover:text-white">{% translate "Profile" %}</a>
                     <span>|</span>
                     {% if is_impersonating %}
                     <form action="{% url 'impersonate-stop' %}" method="post" class="inline">
                         {% csrf_token %}
-                        <button type="submit" class="text-amber-400 hover:text-amber-300">Stop</button>
+                        <button type="submit" class="text-amber-400 hover:text-amber-300">{% translate "Stop" %}</button>
                     </form>
                     {% else %}
-                    <a href="{% url 'logout' %}" class="hover:text-white">Log out</a>
+                    <a href="{% url 'logout' %}" class="hover:text-white">{% translate "Log out" %}</a>
                     {% endif %}
                 </div>
             </div>
