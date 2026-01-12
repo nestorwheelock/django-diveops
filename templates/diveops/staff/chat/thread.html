@@ -28,7 +28,7 @@
     <!-- Header -->
     <header class="bg-blue-600 text-white safe-top shadow-lg flex-shrink-0">
         <div class="flex items-center gap-3 px-4 py-3">
-            <a href="{% url 'staff:chat-inbox' %}" class="p-1 hover:bg-blue-700 rounded-lg">
+            <a href="{% url 'diveops:chat-inbox' %}" class="p-1 hover:bg-blue-700 rounded-lg">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                 </svg>
@@ -39,7 +39,7 @@
                 <p class="text-xs text-blue-200 truncate">{{ person.email }}</p>
             </div>
 
-            <a href="{% url 'staff:lead-detail' person.pk %}"
+            <a href="{% url 'diveops:lead-detail' person.pk %}"
                class="p-2 hover:bg-blue-700 rounded-lg"
                title="View Lead Details">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
