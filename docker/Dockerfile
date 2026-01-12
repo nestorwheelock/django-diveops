@@ -20,52 +20,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
-COPY requirements/base.txt requirements/prod.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r prod.txt
+RUN pip install --no-cache-dir --upgrade pip
 
-# Install django-primitives packages from submodule IN DEPENDENCY ORDER
+# Install django-primitives packages FIRST (before requirements)
+# This ensures they're available when pip resolves dependencies
 COPY lib/django-primitives/packages/ /tmp/packages/
 
-# Tier 0: Foundation (no dependencies)
-RUN pip install --no-cache-dir \
+# Install all primitives with --no-deps first to avoid PyPI lookups
+RUN pip install --no-cache-dir --no-deps \
     /tmp/packages/django-basemodels \
     /tmp/packages/django-singleton \
     /tmp/packages/django-sequence \
     /tmp/packages/django-modules \
     /tmp/packages/django-layers \
-    /tmp/packages/django-money
-
-# Tier 1: Identity (depends on foundation)
-RUN pip install --no-cache-dir \
+    /tmp/packages/django-money \
     /tmp/packages/django-parties \
-    /tmp/packages/django-rbac
-
-# Tier 2: Infrastructure (depends on foundation + identity)
-RUN pip install --no-cache-dir \
+    /tmp/packages/django-rbac \
     /tmp/packages/django-decisioning \
     /tmp/packages/django-audit-log \
-    /tmp/packages/django-communication
-
-# Tier 3: Domain (depends on lower tiers)
-RUN pip install --no-cache-dir \
+    /tmp/packages/django-communication \
     /tmp/packages/django-catalog \
     /tmp/packages/django-encounters \
     /tmp/packages/django-worklog \
     /tmp/packages/django-geo \
-    /tmp/packages/django-ledger
-
-# Tier 4: Content (depends on domain + lower)
-RUN pip install --no-cache-dir \
+    /tmp/packages/django-ledger \
     /tmp/packages/django-documents \
     /tmp/packages/django-notes \
     /tmp/packages/django-agreements \
     /tmp/packages/django-questionnaires \
-    /tmp/packages/django-cms-core
+    /tmp/packages/django-cms-core \
+    /tmp/packages/django-ai-services
 
-# Tier 5: AI Services
-RUN pip install --no-cache-dir /tmp/packages/django-ai-services || true
+# Now install requirements (primitives are already satisfied)
+COPY requirements/base.txt requirements/prod.txt ./
+RUN pip install --no-cache-dir -r prod.txt
 
 # ================================
 # Stage 2: Production image
