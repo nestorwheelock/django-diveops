@@ -17,7 +17,10 @@
                     {% else %}
                     <a href="{% url 'portal:dashboard' %}" class="text-gray-600 hover:text-gray-900">{% translate "Dashboard" %}</a>
                     {% endif %}
-                    <a href="{% url 'logout' %}" class="text-gray-600 hover:text-gray-900">{% translate "Logout" %}</a>
+                    <form method="post" action="{% url 'logout' %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="text-gray-600 hover:text-gray-900">{% translate "Logout" %}</button>
+                    </form>
                     {% else %}
                     <a href="{% url 'login' %}" class="text-gray-600 hover:text-gray-900">{% translate "Login" %}</a>
                     {% endif %}

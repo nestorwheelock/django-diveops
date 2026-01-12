@@ -89,7 +89,10 @@
                         <button type="submit" class="hover:text-amber-600 text-amber-500">Stop</button>
                     </form>
                     {% else %}
-                    <a href="{% url 'logout' %}" class="hover:text-primary-600">Log out</a>
+                    <form method="post" action="{% url 'logout' %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="hover:text-primary-600">Log out</button>
+                    </form>
                     {% endif %}
                 </div>
             </div>

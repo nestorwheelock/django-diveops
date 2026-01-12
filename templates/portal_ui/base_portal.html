@@ -102,9 +102,12 @@
                             <a href="{% url 'portal:dashboard' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 {% icon "home" "w-4 h-4 inline mr-2" %} Dashboard
                             </a>
-                            <a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                {% icon "log-out" "w-4 h-4 inline mr-2" %} Logout
-                            </a>
+                            <form method="post" action="{% url 'logout' %}" class="block">
+                                {% csrf_token %}
+                                <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    {% icon "log-out" "w-4 h-4 inline mr-2" %} Logout
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>

@@ -81,7 +81,10 @@
                         <button type="submit" class="text-amber-400 hover:text-amber-300">{% translate "Stop" %}</button>
                     </form>
                     {% else %}
-                    <a href="{% url 'logout' %}" class="hover:text-white">{% translate "Log out" %}</a>
+                    <form method="post" action="{% url 'logout' %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="hover:text-white">{% translate "Log out" %}</button>
+                    </form>
                     {% endif %}
                 </div>
             </div>

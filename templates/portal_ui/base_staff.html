@@ -127,10 +127,13 @@
                                     </button>
                                 </form>
                                 {% else %}
-                                <a href="{% url 'logout' %}" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    {% icon "log-out" "w-4 h-4 mr-3 text-gray-400" %}
-                                    Logout
-                                </a>
+                                <form method="post" action="{% url 'logout' %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        {% icon "log-out" "w-4 h-4 mr-3 text-gray-400" %}
+                                        Logout
+                                    </button>
+                                </form>
                                 {% endif %}
                             </div>
                         </div>
