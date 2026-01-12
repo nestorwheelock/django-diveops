@@ -15,8 +15,8 @@ class DomainLanguageMiddleware:
     - happydiving.mx -> English (en)
     - buceofeliz.com -> Spanish (es)
 
-    This middleware runs BEFORE LocaleMiddleware to set the language
-    based on the domain, overriding browser/cookie preferences.
+    This middleware runs AFTER LocaleMiddleware to override browser/cookie
+    language preferences with domain-based language selection.
     """
 
     def __init__(self, get_response):
