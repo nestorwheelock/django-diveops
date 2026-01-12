@@ -22,38 +22,36 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir --upgrade pip
 
-# Install django-primitives packages FIRST (before requirements)
-# This ensures they're available when pip resolves dependencies
-COPY lib/django-primitives/packages/ /tmp/packages/
-
-# Install all primitives with --no-deps first to avoid PyPI lookups
-RUN pip install --no-cache-dir --no-deps \
-    /tmp/packages/django-basemodels \
-    /tmp/packages/django-singleton \
-    /tmp/packages/django-sequence \
-    /tmp/packages/django-modules \
-    /tmp/packages/django-layers \
-    /tmp/packages/django-money \
-    /tmp/packages/django-parties \
-    /tmp/packages/django-rbac \
-    /tmp/packages/django-decisioning \
-    /tmp/packages/django-audit-log \
-    /tmp/packages/django-communication \
-    /tmp/packages/django-catalog \
-    /tmp/packages/django-encounters \
-    /tmp/packages/django-worklog \
-    /tmp/packages/django-geo \
-    /tmp/packages/django-ledger \
-    /tmp/packages/django-documents \
-    /tmp/packages/django-notes \
-    /tmp/packages/django-agreements \
-    /tmp/packages/django-questionnaires \
-    /tmp/packages/django-cms-core \
-    /tmp/packages/django-ai-services
-
-# Now install requirements (primitives are already satisfied)
+# Install requirements FIRST
 COPY requirements/base.txt requirements/prod.txt ./
 RUN pip install --no-cache-dir -r prod.txt
+
+# Install django-primitives packages from submodule
+# Use --no-deps to prevent PyPI lookups for inter-package dependencies
+COPY lib/django-primitives/packages/ /tmp/packages/
+
+RUN pip install --no-cache-dir --no-deps /tmp/packages/django-basemodels && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-singleton && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-sequence && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-modules && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-layers && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-money && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-parties && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-rbac && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-decisioning && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-audit-log && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-communication && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-catalog && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-encounters && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-worklog && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-geo && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-ledger && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-documents && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-notes && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-agreements && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-questionnaires && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-cms-core && \
+    pip install --no-cache-dir --no-deps /tmp/packages/django-ai-services
 
 # ================================
 # Stage 2: Production image
