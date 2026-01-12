@@ -1,0 +1,58 @@
+name: Setup SSL
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  setup-ssl:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy SSL setup script to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "scripts/init-ssl.sh"
+          target: /opt/diveops/
+          strip_components: 0
+
+      - name: Run SSL setup on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            cd /opt/diveops
+            chmod +x scripts/init-ssl.sh
+
+            echo "=== Running SSL setup ==="
+            ./scripts/init-ssl.sh
+
+            echo "=== Switching to HTTPS nginx config ==="
+            cp docker/nginx/nginx.small.conf nginx.conf
+
+            echo "=== Updating environment for SSL ==="
+            # Update .env to enable SSL redirect
+            if grep -q "SECURE_SSL_REDIRECT" /opt/diveops/.env; then
+              sed -i 's/SECURE_SSL_REDIRECT=.*/SECURE_SSL_REDIRECT=true/' /opt/diveops/.env
+            else
+              echo "SECURE_SSL_REDIRECT=true" >> /opt/diveops/.env
+            fi
+
+            echo "=== Restarting services ==="
+            docker compose -f docker-compose.prod.yml up -d --force-recreate nginx web
+
+            echo "=== Checking status ==="
+            docker compose -f docker-compose.prod.yml ps
+            docker compose -f docker-compose.prod.yml logs --tail=10 nginx
