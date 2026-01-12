@@ -14,7 +14,15 @@
 {% block content %}
 <div class="cms-page">
     {% for block in blocks %}
-    {% include "components/blocks/block.html" %}
+        {% if block.block_type == "hero" %}
+            {# Hero blocks render full-width #}
+            {% include "components/blocks/block.html" %}
+        {% else %}
+            {# Other blocks render in a container #}
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+                {% include "components/blocks/block.html" %}
+            </div>
+        {% endif %}
     {% endfor %}
 </div>
 {% endblock %}

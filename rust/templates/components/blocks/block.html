@@ -1,5 +1,5 @@
 {# Block renderer for content blocks #}
-<div class="cms-block cms-block--{{ block.block_type }} mb-6">
+<div class="cms-block cms-block--{{ block.block_type }}{% if block.block_type != "hero" %} mb-6{% endif %}">
 {% if block.block_type == "rich_text" %}
     <div class="prose max-w-none">{{ block.content()|safe }}</div>
 
