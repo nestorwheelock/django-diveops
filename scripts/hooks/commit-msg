@@ -1,0 +1,32 @@
+#!/bin/bash
+# Prevent AI attribution in commit messages
+# Install: cp scripts/hooks/* .git/hooks/ && chmod +x .git/hooks/*
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Check for forbidden patterns (case-insensitive)
+# Note: "claude" alone is too broad (catches CLAUDE.md), so we use specific attribution patterns
+FORBIDDEN_PATTERNS=(
+    "co-authored-by.*claude"
+    "co-authored-by.*anthropic"
+    "generated.*with.*claude"
+    "generated.*by.*claude"
+    "built.*with.*claude"
+    "claude.*code"
+    "claude.*opus"
+    "claude.*sonnet"
+    "noreply@anthropic"
+)
+
+for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+    if echo "$COMMIT_MSG" | grep -iE "$pattern" > /dev/null 2>&1; then
+        echo "ERROR: Commit message contains forbidden AI attribution pattern: $pattern"
+        echo "AI attribution is not allowed in this repository."
+        echo ""
+        echo "Please remove any references to Claude, AI assistants, or Anthropic."
+        exit 1
+    fi
+done
+
+exit 0
