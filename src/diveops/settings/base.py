@@ -123,14 +123,17 @@ WSGI_APPLICATION = "diveops.wsgi.application"
 ASGI_APPLICATION = "diveops.asgi.application"
 
 # Database - PostgreSQL only
+# For Unix socket (fastest): set POSTGRES_HOST="" or POSTGRES_HOST="/var/run/postgresql"
+# For TCP: set POSTGRES_HOST="localhost" or remote IP
+_pg_host = os.environ.get("POSTGRES_HOST", "")
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get("POSTGRES_DB", "diveops"),
-        "USER": os.environ.get("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "postgres"),
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "USER": os.environ.get("POSTGRES_USER", "diveops"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "diveops"),
+        "HOST": _pg_host,
+        "PORT": os.environ.get("POSTGRES_PORT", "") if _pg_host else "",
         "OPTIONS": {
             "connect_timeout": 10,
         },

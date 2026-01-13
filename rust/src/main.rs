@@ -46,8 +46,24 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Database connection
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/diveops".to_string());
+    // Supports: DATABASE_URL, or build from POSTGRES_* vars
+    // For Unix socket: set POSTGRES_HOST="" or POSTGRES_HOST="/var/run/postgresql"
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let user = std::env::var("POSTGRES_USER").unwrap_or_else(|_| "diveops".to_string());
+        let password = std::env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "diveops".to_string());
+        let db = std::env::var("POSTGRES_DB").unwrap_or_else(|_| "diveops".to_string());
+        let host = std::env::var("POSTGRES_HOST").unwrap_or_default();
+
+        if host.is_empty() || host.starts_with('/') {
+            // Unix socket connection (fastest)
+            let socket_dir = if host.is_empty() { "/var/run/postgresql" } else { &host };
+            format!("postgres://{}:{}@/{db}?host={socket_dir}", user, password)
+        } else {
+            // TCP connection
+            let port = std::env::var("POSTGRES_PORT").unwrap_or_else(|_| "5432".to_string());
+            format!("postgres://{}:{}@{}:{}/{}", user, password, host, port, db)
+        }
+    });
 
     tracing::info!("Connecting to database...");
     let pool = PgPoolOptions::new()
