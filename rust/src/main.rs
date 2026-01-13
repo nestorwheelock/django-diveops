@@ -16,6 +16,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod cache;
 mod db;
+pub mod deco;
 mod error;
 mod models;
 pub mod pricing;
@@ -84,6 +85,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/app/", get(routes::app::download))
         // Pricing API (called by Django)
         .nest("/api/pricing", pricing::router())
+        // Deco validation API (called by Django)
+        .nest("/api/deco", deco::router())
         // CMS pages (catch-all for slugs)
         .route("/", get(routes::cms::home))
         .route("/:slug/", get(routes::cms::page))
