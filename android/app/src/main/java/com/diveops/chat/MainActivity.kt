@@ -375,6 +375,7 @@ class MainActivity : ComponentActivity() {
                 CustomerHomeScreen(
                     userName = userInfo,
                     onBookingsClick = { navController.navigate("bookings") },
+                    onMessagesClick = { navController.navigate("conversations") },
                     onLocationSettingsClick = { navController.navigate("location_settings") },
                     onLogout = {
                         coroutineScope.launch {

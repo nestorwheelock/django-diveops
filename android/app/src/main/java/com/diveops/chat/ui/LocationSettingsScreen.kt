@@ -38,7 +38,7 @@ fun LocationSettingsScreen(
         it.visibility != selectedVisibility ||
         it.is_tracking_enabled != trackingEnabled ||
         it.tracking_interval_seconds != trackingInterval
-    } ?: false
+    } ?: true
 
     Scaffold(
         topBar = {
