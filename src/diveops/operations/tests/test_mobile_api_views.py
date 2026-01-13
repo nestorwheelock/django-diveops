@@ -41,6 +41,7 @@ def api_client():
 def staff_user(db):
     """Create a staff user."""
     user = User.objects.create_user(
+        username="staff@happydiving.mx",
         email="staff@happydiving.mx",
         password="testpass123",
         first_name="Staff",
@@ -54,6 +55,7 @@ def staff_user(db):
 def customer_user(db):
     """Create a customer (non-staff) user."""
     user = User.objects.create_user(
+        username="customer@example.com",
         email="customer@example.com",
         password="testpass123",
         first_name="John",
