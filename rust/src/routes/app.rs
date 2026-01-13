@@ -91,10 +91,10 @@ fn find_latest_apk() -> Option<ApkInfo> {
             let entry = entry.ok()?;
             let filename = entry.file_name().to_string_lossy().to_string();
 
-            // Match pattern: diveops-X.Y.Z.apk
-            if filename.starts_with("diveops-") && filename.ends_with(".apk") {
+            // Match pattern: buceo-X.Y.Z.apk
+            if filename.starts_with("buceo-") && filename.ends_with(".apk") {
                 let version_str = filename
-                    .strip_prefix("diveops-")?
+                    .strip_prefix("buceo-")?
                     .strip_suffix(".apk")?;
                 let version = Version::parse(version_str)?;
                 Some(ApkInfo { filename, version })
