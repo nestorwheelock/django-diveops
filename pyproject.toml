@@ -46,8 +46,9 @@ packages = ["src/diveops"]
 DJANGO_SETTINGS_MODULE = "diveops.settings.test"
 python_files = ["test_*.py"]
 pythonpath = ["src"]
-testpaths = ["tests"]
-addopts = "-v --tb=short"
+testpaths = ["tests", "src/diveops"]
+addopts = "-v --tb=short --ignore=lib/ --ignore=rust/"
+norecursedirs = ["lib", "rust", "android", "node_modules", ".git", "staticfiles"]
 
 [tool.ruff]
 line-length = 120
