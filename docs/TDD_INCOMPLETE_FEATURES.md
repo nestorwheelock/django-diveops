@@ -2,7 +2,7 @@
 
 This document tracks test files written using TDD methodology where the implementation has not been completed. These tests are currently skipped in CI to allow passing builds.
 
-**Last Updated:** 2025-01-13
+**Last Updated:** 2026-01-13
 
 ## Summary
 
@@ -19,6 +19,11 @@ This document tracks test files written using TDD methodology where the implemen
 | test_recurring_models.py | Recurring Excursion Models | Not Started | High |
 | test_recurring_services.py | Recurring Excursion Services | Partial | High |
 | test_webrtc_consumer.py | WebRTC Signaling | Not Started | Low |
+| test_courseware_recommendations.py | Courseware Recommendations | Not Started | Medium |
+| test_cms_access.py | CMS Entitlement Access | Not Started | Low |
+| test_entitlements.py | Entitlement Services | Not Started | Medium |
+| test_fulfillment.py | Order Fulfillment | Not Started | Medium |
+| TestCreateLedgerEntriesIntegration | Ledger Entry Integration | Needs Update | Low |
 
 ---
 
