@@ -151,3 +151,4 @@ logs/
 *.pem
 *.key
 secrets/
+android/app/google-services.json
