@@ -281,7 +281,8 @@ class MainActivity : ComponentActivity() {
                                 popUpTo("conversations") { inclusive = true }
                             }
                         }
-                    }
+                    },
+                    onLocationSettingsClick = { navController.navigate("location_settings") }
                 )
             }
 

@@ -7,10 +7,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +43,12 @@ fun ConversationsScreen(
     errorMessage: String?,
     onConversationClick: (ConversationItem) -> Unit,
     onRefresh: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onLocationSettingsClick: (() -> Unit)? = null,
+    onProfileClick: (() -> Unit)? = null
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -56,6 +67,55 @@ fun ConversationsScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = Color.White
+            ) {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Email, contentDescription = "Chats") },
+                    label = { Text("Chats") },
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Primary,
+                        selectedTextColor = Primary,
+                        indicatorColor = Primary.copy(alpha = 0.1f)
+                    )
+                )
+                if (onLocationSettingsClick != null) {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.LocationOn, contentDescription = "Location") },
+                        label = { Text("Location") },
+                        selected = selectedTab == 1,
+                        onClick = {
+                            selectedTab = 1
+                            onLocationSettingsClick()
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Primary,
+                            selectedTextColor = Primary,
+                            indicatorColor = Primary.copy(alpha = 0.1f)
+                        )
+                    )
+                }
+                if (onProfileClick != null) {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
+                        label = { Text("Profile") },
+                        selected = selectedTab == 2,
+                        onClick = {
+                            selectedTab = 2
+                            onProfileClick()
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Primary,
+                            selectedTextColor = Primary,
+                            indicatorColor = Primary.copy(alpha = 0.1f)
+                        )
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         Box(
