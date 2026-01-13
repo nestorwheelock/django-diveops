@@ -4,7 +4,7 @@ set -e
 # Buceo Feliz Deployment Script
 # Usage: ./scripts/deploy.sh [command]
 
-SERVER_HOST="${SERVER_HOST:-happydiving.mx}"
+SERVER_HOST="${SERVER_HOST:-207.246.125.49}"
 SERVER_USER="${SERVER_USER:-root}"
 REMOTE_PATH="/opt/diveops"
 
@@ -33,29 +33,28 @@ upload_apk() {
 
     local filename=$(basename "$apk_file")
 
-    # Validate filename format
-    if [[ ! "$filename" =~ ^buceo-[0-9]+\.[0-9]+\.[0-9]+\.apk$ ]]; then
+    # Validate filename format (supports X.Y.Z or X.Y.Z-suffix like alpha, beta, rc1)
+    if [[ ! "$filename" =~ ^buceo-[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?\.apk$ ]]; then
         warn "APK filename should be buceo-X.Y.Z.apk format"
         read -p "Continue anyway? [y/N] " -n 1 -r
         echo
         [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
     fi
 
-    info "Uploading $filename to server..."
+    info "Uploading $filename to server (rsync with resume)..."
 
-    # Get the downloads volume path
-    local volume_path=$(ssh "$SERVER_USER@$SERVER_HOST" "docker volume inspect diveops_downloads_data --format '{{.Mountpoint}}' 2>/dev/null || echo ''")
+    # Upload to staging location using rsync (supports resume)
+    ssh "$SERVER_USER@$SERVER_HOST" "mkdir -p $REMOTE_PATH/downloads"
+    rsync -avP --progress "$apk_file" "$SERVER_USER@$SERVER_HOST:$REMOTE_PATH/downloads/$filename"
 
-    if [ -z "$volume_path" ]; then
-        # Volume doesn't exist yet, create temp location
-        ssh "$SERVER_USER@$SERVER_HOST" "mkdir -p $REMOTE_PATH/downloads"
-        scp "$apk_file" "$SERVER_USER@$SERVER_HOST:$REMOTE_PATH/downloads/$filename"
-        # Copy into container
-        ssh "$SERVER_USER@$SERVER_HOST" "docker cp $REMOTE_PATH/downloads/$filename diveops_rust:/app/static/downloads/ 2>/dev/null || echo 'Container not running, APK staged for next deploy'"
-    else
-        # Upload directly to volume
-        scp "$apk_file" "$SERVER_USER@$SERVER_HOST:$volume_path/$filename"
-    fi
+    info "Copying APK into Rust container..."
+    ssh "$SERVER_USER@$SERVER_HOST" "docker cp $REMOTE_PATH/downloads/$filename diveops_rust:/app/static/downloads/"
+
+    info "Purging nginx cache..."
+    ssh "$SERVER_USER@$SERVER_HOST" "rm -rf /var/cache/nginx/happydiving/* && docker exec diveops_nginx nginx -s reload" 2>/dev/null || warn "Could not purge nginx cache"
+
+    info "Restarting Rust container to pick up new APK..."
+    ssh "$SERVER_USER@$SERVER_HOST" "cd $REMOTE_PATH && docker compose -f docker-compose.prod.yml restart rust"
 
     info "APK uploaded successfully: $filename"
     info "Download page will now show version: ${filename#buceo-}"

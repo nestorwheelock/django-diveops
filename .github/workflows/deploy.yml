@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - 'android/**'
       - 'planning/**'
+      - 'docker/nginx/**'
+      - 'scripts/**'
   workflow_dispatch:  # Allow manual trigger
 
 env:
