@@ -23,32 +23,41 @@ upload_apk() {
     local apk_file="$1"
 
     if [ -z "$apk_file" ]; then
-        # Find latest APK in common locations
-        apk_file=$(find . -name "buceo-*.apk" -type f 2>/dev/null | head -1)
+        # Find latest APK in common locations (check buceo-feliz first, then buceo)
+        apk_file=$(find . -name "buceo-feliz-*.apk" -type f 2>/dev/null | head -1)
+        [ -z "$apk_file" ] && apk_file=$(find . -name "buceo-*.apk" -type f 2>/dev/null | head -1)
+        [ -z "$apk_file" ] && apk_file=$(find ~/Downloads -name "buceo-feliz-*.apk" -type f 2>/dev/null | head -1)
         [ -z "$apk_file" ] && apk_file=$(find ~/Downloads -name "buceo-*.apk" -type f 2>/dev/null | head -1)
     fi
 
-    [ -z "$apk_file" ] && error "No APK file specified or found. Usage: $0 upload-apk [path/to/buceo-X.Y.Z.apk]"
+    [ -z "$apk_file" ] && error "No APK file specified or found. Usage: $0 upload-apk [path/to/buceo-feliz-X.Y.Z.apk]"
     [ ! -f "$apk_file" ] && error "APK file not found: $apk_file"
 
     local filename=$(basename "$apk_file")
+    local target_filename="$filename"
+
+    # Convert buceo-feliz-X.Y.Z.apk to buceo-X.Y.Z.apk (Rust expects buceo-X.Y.Z.apk)
+    if [[ "$filename" =~ ^buceo-feliz-(.+)\.apk$ ]]; then
+        target_filename="buceo-${BASH_REMATCH[1]}.apk"
+        info "Renaming $filename -> $target_filename for server"
+    fi
 
     # Validate filename format (supports X.Y.Z or X.Y.Z-suffix like alpha, beta, rc1)
-    if [[ ! "$filename" =~ ^buceo-[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?\.apk$ ]]; then
-        warn "APK filename should be buceo-X.Y.Z.apk format"
+    if [[ ! "$target_filename" =~ ^buceo-[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?\.apk$ ]]; then
+        warn "APK filename should be buceo-feliz-X.Y.Z.apk or buceo-X.Y.Z.apk format"
         read -p "Continue anyway? [y/N] " -n 1 -r
         echo
         [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
     fi
 
-    info "Uploading $filename to server (rsync with resume)..."
+    info "Uploading $filename to server as $target_filename (rsync with resume)..."
 
     # Upload to staging location using rsync (supports resume)
     ssh "$SERVER_USER@$SERVER_HOST" "mkdir -p $REMOTE_PATH/downloads"
-    rsync -avP --progress "$apk_file" "$SERVER_USER@$SERVER_HOST:$REMOTE_PATH/downloads/$filename"
+    rsync -avP --progress "$apk_file" "$SERVER_USER@$SERVER_HOST:$REMOTE_PATH/downloads/$target_filename"
 
     info "Copying APK into Rust container..."
-    ssh "$SERVER_USER@$SERVER_HOST" "docker cp $REMOTE_PATH/downloads/$filename diveops_rust:/app/static/downloads/"
+    ssh "$SERVER_USER@$SERVER_HOST" "docker cp $REMOTE_PATH/downloads/$target_filename diveops_rust:/app/static/downloads/"
 
     info "Purging nginx cache..."
     ssh "$SERVER_USER@$SERVER_HOST" "rm -rf /var/cache/nginx/happydiving/* && docker exec diveops_nginx nginx -s reload" 2>/dev/null || warn "Could not purge nginx cache"
@@ -56,8 +65,8 @@ upload_apk() {
     info "Restarting Rust container to pick up new APK..."
     ssh "$SERVER_USER@$SERVER_HOST" "cd $REMOTE_PATH && docker compose -f docker-compose.prod.yml restart rust"
 
-    info "APK uploaded successfully: $filename"
-    info "Download page will now show version: ${filename#buceo-}"
+    info "APK uploaded successfully: $target_filename"
+    info "Download page will now show version: ${target_filename#buceo-}"
 }
 
 # List APKs on server
