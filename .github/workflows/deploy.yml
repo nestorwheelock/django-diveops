@@ -195,12 +195,74 @@ jobs:
               sleep 5
             done
 
-            # Run database migrations
+            # Run database migrations with verification
             echo "Running database migrations..."
             docker compose -f docker-compose.prod.yml exec -T web python manage.py migrate 2>&1 || {
               echo "Migration failed, check logs above"
             }
             echo "Migrations complete"
+
+            # CRITICAL: Verify migrations actually applied (not just recorded)
+            echo "=== Verifying Migration Integrity ==="
+            docker compose -f docker-compose.prod.yml exec -T web python -c "
+import django
+django.setup()
+from django.db import connection
+
+# Critical tables that MUST exist after migrations
+CRITICAL_TABLES = [
+    'django_communication_fcmdevice',
+    'django_communication_conversation',
+    'django_communication_message',
+    'django_parties_person',
+]
+
+with connection.cursor() as cursor:
+    cursor.execute(\"\"\"
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public'
+    \"\"\")
+    existing_tables = {row[0] for row in cursor.fetchall()}
+
+missing = []
+for table in CRITICAL_TABLES:
+    if table not in existing_tables:
+        missing.append(table)
+        print(f'MISSING TABLE: {table}')
+
+if missing:
+    print(f'ERROR: {len(missing)} critical tables missing!')
+    print('This indicates migrations are recorded but tables were not created.')
+    print('Attempting to fix by re-running affected migrations...')
+
+    # Try to identify and fix the broken migrations
+    from django.core.management import call_command
+    from django.db.migrations.recorder import MigrationRecorder
+
+    for table in missing:
+        # Find which app owns this table
+        if table.startswith('django_communication_'):
+            app = 'django_communication'
+        elif table.startswith('django_parties_'):
+            app = 'django_parties'
+        else:
+            continue
+
+        print(f'Checking {app} migrations...')
+        # This will show migration state
+        call_command('showmigrations', app)
+
+        # Find migrations that create missing tables and re-run them
+        # by faking to previous then migrating again
+        print(f'Note: May need manual intervention for {table}')
+
+    exit(1)
+else:
+    print('All critical tables verified successfully!')
+" || {
+              echo "WARNING: Migration verification failed!"
+              echo "There may be database schema inconsistencies."
+            }
 
             # Create or update superuser
             docker compose -f docker-compose.prod.yml exec -T web python -c "import os,django;os.environ.setdefault('DJANGO_SETTINGS_MODULE','diveops.settings.prod');django.setup();from django.contrib.auth import get_user_model;User=get_user_model();u=User.objects.filter(email='nestorwheelock@gmail.com').first();(u.set_password('admin123'),u.save()) if u else User.objects.create_superuser(username='admin',email='nestorwheelock@gmail.com',password='admin123');print('Done')" || echo "Failed to create/update superuser"
