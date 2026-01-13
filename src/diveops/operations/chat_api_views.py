@@ -38,26 +38,55 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
     def get(self, request):
         person_ct = ContentType.objects.get_for_model(Person)
 
-        # Get active conversations linked to Person records (leads/customers)
-        conversations = (
-            Conversation.objects.filter(
-                related_content_type=person_ct,
-                status=ConversationStatus.ACTIVE,
-                deleted_at__isnull=True,
-            )
-            .select_related("related_content_type")
-            .order_by("-updated_at")[:50]
+        # Get status filter from query params (default: show active and archived)
+        status_filter = request.GET.get("status", "").lower()
+
+        # Build base query for conversations linked to Person records
+        queryset = Conversation.objects.filter(
+            related_content_type=person_ct,
+            deleted_at__isnull=True,
         )
+
+        # Apply status filter
+        if status_filter == "active":
+            queryset = queryset.filter(status=ConversationStatus.ACTIVE)
+        elif status_filter == "archived":
+            queryset = queryset.filter(status=ConversationStatus.ARCHIVED)
+        elif status_filter == "closed":
+            queryset = queryset.filter(status=ConversationStatus.CLOSED)
+        elif status_filter == "all":
+            pass  # No filter, show all statuses
+        else:
+            # Default: show active and archived (exclude only closed)
+            queryset = queryset.exclude(status=ConversationStatus.CLOSED)
+
+        # Get limit from query params (default 100, max 200)
+        try:
+            limit = min(int(request.GET.get("limit", 100)), 200)
+        except (ValueError, TypeError):
+            limit = 100
+
+        conversations = (
+            queryset
+            .select_related("related_content_type")
+            .order_by("-updated_at")[:limit]
+        )
+
+        # Batch fetch all persons to avoid N+1 queries
+        person_ids = [conv.related_object_id for conv in conversations]
+        persons_by_id = {
+            str(p.pk): p
+            for p in Person.objects.filter(
+                pk__in=person_ids,
+                deleted_at__isnull=True,
+            ).select_related("diver_profile")
+        }
 
         result = []
         for conv in conversations:
             # Get the Person for this conversation
-            try:
-                person = Person.objects.get(
-                    pk=conv.related_object_id,
-                    deleted_at__isnull=True,
-                )
-            except (Person.DoesNotExist, ValueError):
+            person = persons_by_id.get(conv.related_object_id)
+            if not person:
                 continue
 
             # Get last message
@@ -90,6 +119,12 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
             if not initials:
                 initials = "?"
 
+            # Check if person is a diver (select_related already fetched this)
+            try:
+                is_diver = person.diver_profile is not None
+            except Exception:
+                is_diver = False
+
             result.append({
                 "person_id": str(person.pk),
                 "conversation_id": str(conv.pk),
@@ -100,6 +135,8 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
                 "last_message_time": time_str,
                 "needs_reply": needs_reply,
                 "lead_status": person.lead_status,
+                "conversation_status": conv.status,
+                "is_diver": is_diver,
             })
 
         return JsonResponse({"conversations": result})
