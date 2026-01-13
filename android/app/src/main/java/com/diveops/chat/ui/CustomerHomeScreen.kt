@@ -109,7 +109,7 @@ fun CustomerHomeScreen(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                HorizontalDivider()
+                Divider()
 
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.ExitToApp, contentDescription = null) },
