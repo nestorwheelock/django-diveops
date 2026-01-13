@@ -99,25 +99,25 @@ struct DownloadTemplate {
     qr_code_data: String,
 }
 
-/// Find the latest APK in the app directory
+/// Find the latest APK in the downloads directory
 fn find_latest_apk() -> Option<ApkInfo> {
-    let app_dir = Path::new("static/app");
+    let downloads_dir = Path::new("static/downloads");
 
-    if !app_dir.exists() {
-        tracing::warn!("App directory does not exist: {:?}", app_dir);
+    if !downloads_dir.exists() {
+        tracing::warn!("Downloads directory does not exist: {:?}", downloads_dir);
         return None;
     }
 
-    let mut apks: Vec<ApkInfo> = fs::read_dir(app_dir)
+    let mut apks: Vec<ApkInfo> = fs::read_dir(downloads_dir)
         .ok()?
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let filename = entry.file_name().to_string_lossy().to_string();
 
-            // Match pattern: buceo-feliz-X.Y.Z.apk or buceo-feliz-X.Y.Z-suffix.apk
-            if filename.starts_with("buceo-feliz-") && filename.ends_with(".apk") {
+            // Match pattern: buceo-X.Y.Z.apk or buceo-X.Y.Z-suffix.apk
+            if filename.starts_with("buceo-") && filename.ends_with(".apk") {
                 let version_str = filename
-                    .strip_prefix("buceo-feliz-")?
+                    .strip_prefix("buceo-")?
                     .strip_suffix(".apk")?;
                 let version = Version::parse(version_str)?;
                 Some(ApkInfo { filename, version })
@@ -173,7 +173,7 @@ pub async fn download() -> Result<Html<String>> {
 
     let (has_apk, version, filename, download_url, qr_code_data) = match find_latest_apk() {
         Some(apk) => {
-            let download_url = format!("{}/static/app/{}", base_url, apk.filename);
+            let download_url = format!("{}/static/downloads/{}", base_url, apk.filename);
             let qr_code_data = generate_qr_code(&download_url);
             (true, apk.version.to_string(), apk.filename, download_url, qr_code_data)
         }
