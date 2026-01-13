@@ -61,3 +61,10 @@ LOGGING = {
         "level": "CRITICAL",
     },
 }
+
+# Use in-memory channel layer for tests
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}

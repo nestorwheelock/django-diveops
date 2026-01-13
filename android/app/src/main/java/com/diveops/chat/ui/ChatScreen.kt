@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +40,7 @@ fun ChatScreen(
     isLoading: Boolean,
     isSending: Boolean,
     onSendMessage: (String) -> Unit,
+    onStartCall: () -> Unit,
     onBack: () -> Unit
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -93,6 +95,15 @@ fun ChatScreen(
                         Icon(
                             Icons.Filled.ArrowBack,
                             contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onStartCall) {
+                        Icon(
+                            Icons.Filled.Videocam,
+                            contentDescription = "Start video call",
                             tint = Color.White
                         )
                     }

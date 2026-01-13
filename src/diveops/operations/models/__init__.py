@@ -129,6 +129,17 @@ from .flows import (
     FlowType,
 )
 
+# App & Mobile
+from .app import (
+    AppVersion,
+)
+
+# Location Tracking
+from .location import (
+    LocationSharingPreference,
+    LocationUpdate,
+)
+
 __all__ = [
     # Constants
     "DIVEOPS_WAIVER_VALIDITY_DAYS",
@@ -211,4 +222,9 @@ __all__ = [
     # Flows
     "FlowType",
     "FlowThread",
+    # App & Mobile
+    "AppVersion",
+    # Location Tracking
+    "LocationUpdate",
+    "LocationSharingPreference",
 ]

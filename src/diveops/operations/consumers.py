@@ -1,4 +1,4 @@
-"""WebSocket consumers for real-time chat."""
+"""WebSocket consumers for real-time chat and WebRTC signaling."""
 
 import json
 import logging
@@ -8,6 +8,262 @@ from channels.generic.websocket import WebsocketConsumer
 from django.contrib.contenttypes.models import ContentType
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# WebRTC Signaling Consumer
+# =============================================================================
+
+
+class WebRTCConsumer(WebsocketConsumer):
+    """WebSocket consumer for WebRTC signaling.
+
+    Handles peer-to-peer video/audio call signaling:
+    - Offer/Answer SDP exchange
+    - ICE candidate exchange
+    - Call state (calling, answered, rejected, ended)
+
+    Connection: /ws/call/<user_id>/
+    """
+
+    # Track connected users for call routing
+    connected_users = {}
+
+    def connect(self):
+        """Handle WebSocket connection."""
+        route_kwargs = self.scope.get("url_route", {}).get("kwargs", {})
+        user = self.scope.get("user")
+
+        if not user or not user.is_authenticated:
+            logger.warning("Unauthenticated WebRTC connection attempt")
+            self.close()
+            return
+
+        self.user_id = str(user.pk)
+        self.room_group_name = f"webrtc_user_{self.user_id}"
+
+        # Join personal room for receiving calls
+        async_to_sync(self.channel_layer.group_add)(
+            self.room_group_name,
+            self.channel_name
+        )
+
+        # Track this connection
+        WebRTCConsumer.connected_users[self.user_id] = self.channel_name
+
+        self.accept()
+        logger.info(f"WebRTC connected: user {self.user_id}")
+
+        self.send(text_data=json.dumps({
+            "type": "connected",
+            "user_id": self.user_id,
+        }))
+
+    def disconnect(self, close_code):
+        """Handle WebSocket disconnection."""
+        if hasattr(self, "room_group_name"):
+            async_to_sync(self.channel_layer.group_discard)(
+                self.room_group_name,
+                self.channel_name
+            )
+
+        if hasattr(self, "user_id") and self.user_id in WebRTCConsumer.connected_users:
+            del WebRTCConsumer.connected_users[self.user_id]
+
+        logger.info(f"WebRTC disconnected: user {getattr(self, 'user_id', 'unknown')}")
+
+    def receive(self, text_data):
+        """Handle incoming signaling message."""
+        try:
+            data = json.loads(text_data)
+            msg_type = data.get("type")
+
+            if msg_type == "call":
+                self.handle_call(data)
+            elif msg_type == "offer":
+                self.handle_offer(data)
+            elif msg_type == "answer":
+                self.handle_answer(data)
+            elif msg_type == "ice_candidate":
+                self.handle_ice_candidate(data)
+            elif msg_type == "hangup":
+                self.handle_hangup(data)
+            elif msg_type == "reject":
+                self.handle_reject(data)
+            else:
+                logger.warning(f"Unknown WebRTC message type: {msg_type}")
+
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON in WebRTC message")
+        except Exception as e:
+            logger.exception(f"Error handling WebRTC message: {e}")
+
+    def handle_call(self, data):
+        """Initiate a call to another user."""
+        target_user_id = data.get("target_user_id")
+        call_type = data.get("call_type", "video")  # video or audio
+
+        if not target_user_id:
+            self.send(text_data=json.dumps({
+                "type": "error",
+                "message": "target_user_id required",
+            }))
+            return
+
+        # Check if target is online
+        if target_user_id not in WebRTCConsumer.connected_users:
+            self.send(text_data=json.dumps({
+                "type": "user_offline",
+                "target_user_id": target_user_id,
+            }))
+            return
+
+        # Notify target user of incoming call
+        target_room = f"webrtc_user_{target_user_id}"
+        async_to_sync(self.channel_layer.group_send)(
+            target_room,
+            {
+                "type": "incoming_call",
+                "caller_id": self.user_id,
+                "call_type": call_type,
+            }
+        )
+
+        logger.info(f"Call initiated: {self.user_id} -> {target_user_id}")
+
+    def handle_offer(self, data):
+        """Forward SDP offer to target user."""
+        target_user_id = data.get("target_user_id")
+        sdp = data.get("sdp")
+
+        if not target_user_id or not sdp:
+            return
+
+        target_room = f"webrtc_user_{target_user_id}"
+        async_to_sync(self.channel_layer.group_send)(
+            target_room,
+            {
+                "type": "webrtc_offer",
+                "caller_id": self.user_id,
+                "sdp": sdp,
+            }
+        )
+
+    def handle_answer(self, data):
+        """Forward SDP answer to caller."""
+        target_user_id = data.get("target_user_id")
+        sdp = data.get("sdp")
+
+        if not target_user_id or not sdp:
+            return
+
+        target_room = f"webrtc_user_{target_user_id}"
+        async_to_sync(self.channel_layer.group_send)(
+            target_room,
+            {
+                "type": "webrtc_answer",
+                "answerer_id": self.user_id,
+                "sdp": sdp,
+            }
+        )
+
+    def handle_ice_candidate(self, data):
+        """Forward ICE candidate to peer."""
+        target_user_id = data.get("target_user_id")
+        candidate = data.get("candidate")
+
+        if not target_user_id or not candidate:
+            return
+
+        target_room = f"webrtc_user_{target_user_id}"
+        async_to_sync(self.channel_layer.group_send)(
+            target_room,
+            {
+                "type": "ice_candidate",
+                "sender_id": self.user_id,
+                "candidate": candidate,
+            }
+        )
+
+    def handle_hangup(self, data):
+        """End the call."""
+        target_user_id = data.get("target_user_id")
+
+        if not target_user_id:
+            return
+
+        target_room = f"webrtc_user_{target_user_id}"
+        async_to_sync(self.channel_layer.group_send)(
+            target_room,
+            {
+                "type": "call_ended",
+                "ended_by": self.user_id,
+            }
+        )
+
+    def handle_reject(self, data):
+        """Reject incoming call."""
+        target_user_id = data.get("target_user_id")
+
+        if not target_user_id:
+            return
+
+        target_room = f"webrtc_user_{target_user_id}"
+        async_to_sync(self.channel_layer.group_send)(
+            target_room,
+            {
+                "type": "call_rejected",
+                "rejected_by": self.user_id,
+            }
+        )
+
+    # Channel layer message handlers
+
+    def incoming_call(self, event):
+        """Notify user of incoming call."""
+        self.send(text_data=json.dumps({
+            "type": "incoming_call",
+            "caller_id": event["caller_id"],
+            "call_type": event["call_type"],
+        }))
+
+    def webrtc_offer(self, event):
+        """Forward offer to user."""
+        self.send(text_data=json.dumps({
+            "type": "offer",
+            "caller_id": event["caller_id"],
+            "sdp": event["sdp"],
+        }))
+
+    def webrtc_answer(self, event):
+        """Forward answer to user."""
+        self.send(text_data=json.dumps({
+            "type": "answer",
+            "answerer_id": event["answerer_id"],
+            "sdp": event["sdp"],
+        }))
+
+    def ice_candidate(self, event):
+        """Forward ICE candidate to user."""
+        self.send(text_data=json.dumps({
+            "type": "ice_candidate",
+            "sender_id": event["sender_id"],
+            "candidate": event["candidate"],
+        }))
+
+    def call_ended(self, event):
+        """Notify user call ended."""
+        self.send(text_data=json.dumps({
+            "type": "hangup",
+            "ended_by": event["ended_by"],
+        }))
+
+    def call_rejected(self, event):
+        """Notify user call was rejected."""
+        self.send(text_data=json.dumps({
+            "type": "rejected",
+            "rejected_by": event["rejected_by"],
+        }))
 
 
 class ChatConsumer(WebsocketConsumer):

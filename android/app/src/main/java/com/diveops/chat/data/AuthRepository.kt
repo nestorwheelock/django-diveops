@@ -3,10 +3,12 @@ package com.diveops.chat.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.diveops.chat.api.ApiClient
+import com.diveops.chat.api.CustomerUserInfo
 import com.diveops.chat.api.FCMRegisterRequest
 import com.diveops.chat.api.LoginRequest
 import com.diveops.chat.api.UserInfo
@@ -23,10 +25,20 @@ class AuthRepository(private val context: Context) {
         val USER_EMAIL = stringPreferencesKey("user_email")
         val USER_FIRST_NAME = stringPreferencesKey("user_first_name")
         val USER_LAST_NAME = stringPreferencesKey("user_last_name")
+        val USER_PERSON_ID = stringPreferencesKey("user_person_id")
+        val USER_IS_STAFF = booleanPreferencesKey("user_is_staff")
     }
 
     val authToken: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.AUTH_TOKEN]
+    }
+
+    val isStaff: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.USER_IS_STAFF] ?: false
+    }
+
+    val personId: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.USER_PERSON_ID]
     }
 
     val userInfo: Flow<UserInfo?> = context.dataStore.data.map { preferences ->
@@ -50,13 +62,17 @@ class AuthRepository(private val context: Context) {
         return context.dataStore.data.first()[PreferencesKeys.AUTH_TOKEN]
     }
 
+    suspend fun getIsStaff(): Boolean {
+        return context.dataStore.data.first()[PreferencesKeys.USER_IS_STAFF] ?: false
+    }
+
     fun getBearerToken(): Flow<String?> = authToken.map { token ->
         token?.let { "Bearer $it" }
     }
 
-    suspend fun login(email: String, password: String): Result<UserInfo> {
+    suspend fun login(email: String, password: String): Result<CustomerUserInfo> {
         return try {
-            val response = ApiClient.apiService.login(LoginRequest(email, password))
+            val response = ApiClient.apiService.customerLogin(LoginRequest(email, password))
 
             if (response.isSuccessful && response.body() != null) {
                 val loginResponse = response.body()!!
@@ -67,6 +83,8 @@ class AuthRepository(private val context: Context) {
                     preferences[PreferencesKeys.USER_EMAIL] = loginResponse.user.email
                     preferences[PreferencesKeys.USER_FIRST_NAME] = loginResponse.user.first_name
                     preferences[PreferencesKeys.USER_LAST_NAME] = loginResponse.user.last_name
+                    preferences[PreferencesKeys.USER_PERSON_ID] = loginResponse.user.person_id
+                    preferences[PreferencesKeys.USER_IS_STAFF] = loginResponse.user.is_staff
                 }
 
                 Result.success(loginResponse.user)
@@ -85,6 +103,8 @@ class AuthRepository(private val context: Context) {
             preferences.remove(PreferencesKeys.USER_EMAIL)
             preferences.remove(PreferencesKeys.USER_FIRST_NAME)
             preferences.remove(PreferencesKeys.USER_LAST_NAME)
+            preferences.remove(PreferencesKeys.USER_PERSON_ID)
+            preferences.remove(PreferencesKeys.USER_IS_STAFF)
         }
     }
 

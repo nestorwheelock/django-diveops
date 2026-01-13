@@ -6,14 +6,19 @@ These endpoints power the mobile app with:
 - Conversations list
 - Chat messages
 - Send message functionality
+- App version checking (in-app updates)
+- Customer bookings
+- Location tracking and sharing preferences
 """
 
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import authenticate
 from django.contrib.contenttypes.models import ContentType
 from django.http import JsonResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -26,11 +31,18 @@ from django_communication.models import (
     Message,
 )
 
+from .models import (
+    AppVersion,
+    Booking,
+    LocationSharingPreference,
+    LocationUpdate,
+)
+
 logger = logging.getLogger(__name__)
 
 
 def require_auth_token(view_func):
-    """Decorator to require Bearer token authentication."""
+    """Decorator to require Bearer token authentication (staff only)."""
     def wrapper(request, *args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
@@ -43,6 +55,29 @@ def require_auth_token(view_func):
         try:
             token_obj = Token.objects.select_related("user").get(key=token)
             if not token_obj.user.is_active or not token_obj.user.is_staff:
+                return JsonResponse({"error": "Unauthorized"}, status=403)
+            request.user = token_obj.user
+        except Token.DoesNotExist:
+            return JsonResponse({"error": "Invalid token"}, status=401)
+
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+def require_auth_token_any(view_func):
+    """Decorator to require Bearer token authentication (any active user)."""
+    def wrapper(request, *args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JsonResponse({"error": "Authorization required"}, status=401)
+
+        token = auth_header[7:]  # Remove "Bearer " prefix
+
+        # Look up the token
+        from rest_framework.authtoken.models import Token
+        try:
+            token_obj = Token.objects.select_related("user").get(key=token)
+            if not token_obj.user.is_active:
                 return JsonResponse({"error": "Unauthorized"}, status=403)
             request.user = token_obj.user
         except Token.DoesNotExist:
@@ -417,3 +452,489 @@ def _get_sender_name(msg):
     else:
         # Outbound - from staff
         return "Staff"
+
+
+# =============================================================================
+# App Version Check (In-App Updates)
+# =============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class VersionCheckView(View):
+    """Check for app updates.
+
+    GET /api/mobile/version/check/?platform=android&current_version=1
+
+    No authentication required (app needs to check before login).
+
+    Returns:
+    {
+        "update_available": true,
+        "force_update": true,
+        "latest_version": {
+            "version_code": 2,
+            "version_name": "1.1.0",
+            "download_url": "https://...",
+            "release_notes": "Bug fixes..."
+        }
+    }
+    """
+
+    def get(self, request):
+        platform = request.GET.get("platform", "").strip().lower()
+        current_version_str = request.GET.get("current_version", "0")
+
+        if not platform:
+            return JsonResponse({"error": "platform parameter required"}, status=400)
+
+        try:
+            current_version = int(current_version_str)
+        except (ValueError, TypeError):
+            current_version = 0
+
+        # Get latest version for this platform
+        latest = (
+            AppVersion.objects
+            .filter(platform=platform, deleted_at__isnull=True)
+            .order_by("-version_code")
+            .first()
+        )
+
+        if not latest:
+            return JsonResponse({
+                "update_available": False,
+                "force_update": False,
+            })
+
+        update_available = latest.version_code > current_version
+        force_update = (
+            update_available and
+            (latest.is_force_update or current_version < latest.min_supported_version)
+        )
+
+        response = {
+            "update_available": update_available,
+            "force_update": force_update,
+        }
+
+        if update_available:
+            response["latest_version"] = {
+                "version_code": latest.version_code,
+                "version_name": latest.version_name,
+                "download_url": latest.download_url,
+                "release_notes": latest.release_notes,
+            }
+
+        return JsonResponse(response)
+
+
+# =============================================================================
+# Customer Login
+# =============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomerLoginView(View):
+    """Login endpoint for customer mobile app.
+
+    POST /api/mobile/customer/login/
+    {
+        "email": "user@example.com",
+        "password": "secret"
+    }
+
+    Returns auth token and is_staff flag for role-based UI.
+    """
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not email or not password:
+            return JsonResponse({"error": "Email and password required"}, status=400)
+
+        # Authenticate
+        user = authenticate(request, username=email, password=password)
+
+        if not user:
+            return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+        if not user.is_active:
+            return JsonResponse({"error": "Account disabled"}, status=403)
+
+        # Get Person record (required for customer features)
+        try:
+            person = Person.objects.get(user=user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found for this user"}, status=403)
+
+        # Get or create auth token
+        from rest_framework.authtoken.models import Token
+        token, created = Token.objects.get_or_create(user=user)
+
+        return JsonResponse({
+            "token": token.key,
+            "user": {
+                "id": user.pk,
+                "person_id": str(person.pk),
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_staff": user.is_staff,
+            },
+        })
+
+
+# =============================================================================
+# Customer Bookings
+# =============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomerBookingsView(View):
+    """List customer's dive bookings.
+
+    GET /api/mobile/customer/bookings/
+    Headers: Authorization: Bearer <token>
+
+    Returns:
+    {
+        "upcoming": [...],
+        "past": [...]
+    }
+    """
+
+    @method_decorator(require_auth_token_any)
+    def get(self, request):
+        # Get person for this user
+        try:
+            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get diver profile
+        from .models import DiverProfile
+        try:
+            diver = DiverProfile.objects.get(person=person, deleted_at__isnull=True)
+        except DiverProfile.DoesNotExist:
+            # No diver profile means no bookings
+            return JsonResponse({"upcoming": [], "past": []})
+
+        today = timezone.now().date()
+
+        # Get all bookings for this diver
+        bookings = (
+            Booking.objects
+            .filter(diver=diver, deleted_at__isnull=True)
+            .select_related("excursion")
+            .order_by("excursion__departure_date", "excursion__departure_time")
+        )
+
+        upcoming = []
+        past = []
+
+        for booking in bookings:
+            excursion = booking.excursion
+            if not excursion or excursion.deleted_at:
+                continue
+
+            booking_data = {
+                "id": str(booking.pk),
+                "excursion_id": str(excursion.pk),
+                "excursion_name": excursion.name,
+                "departure_date": excursion.departure_date.isoformat() if excursion.departure_date else None,
+                "departure_time": excursion.departure_time.isoformat() if excursion.departure_time else None,
+                "status": booking.status,
+            }
+
+            if excursion.departure_date and excursion.departure_date >= today:
+                upcoming.append(booking_data)
+            else:
+                past.append(booking_data)
+
+        # Sort: upcoming by nearest first, past by most recent first
+        past.reverse()
+
+        return JsonResponse({"upcoming": upcoming, "past": past})
+
+
+# =============================================================================
+# Location Update
+# =============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LocationUpdateView(View):
+    """Submit a location update.
+
+    POST /api/mobile/location/
+    Headers: Authorization: Bearer <token>
+    {
+        "latitude": 20.508895,
+        "longitude": -87.376305,
+        "accuracy_meters": 10.5,
+        "altitude_meters": 5.0,
+        "source": "gps",
+        "recorded_at": "2024-01-13T10:30:00Z"
+    }
+    """
+
+    @method_decorator(require_auth_token_any)
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        # Get person for this user
+        try:
+            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Parse and validate coordinates
+        try:
+            latitude = Decimal(str(data.get("latitude", "")))
+            longitude = Decimal(str(data.get("longitude", "")))
+        except (InvalidOperation, TypeError):
+            return JsonResponse({"error": "Invalid coordinates"}, status=400)
+
+        if not (-90 <= latitude <= 90):
+            return JsonResponse({"error": "Latitude must be between -90 and 90"}, status=400)
+        if not (-180 <= longitude <= 180):
+            return JsonResponse({"error": "Longitude must be between -180 and 180"}, status=400)
+
+        # Parse optional fields
+        accuracy_meters = None
+        if data.get("accuracy_meters"):
+            try:
+                accuracy_meters = Decimal(str(data["accuracy_meters"]))
+            except (InvalidOperation, TypeError):
+                pass
+
+        altitude_meters = None
+        if data.get("altitude_meters"):
+            try:
+                altitude_meters = Decimal(str(data["altitude_meters"]))
+            except (InvalidOperation, TypeError):
+                pass
+
+        source = data.get("source", "fused")
+        if source not in ["gps", "network", "fused", "manual"]:
+            source = "fused"
+
+        # Parse recorded_at or use current time
+        recorded_at_str = data.get("recorded_at")
+        if recorded_at_str:
+            from django.utils.dateparse import parse_datetime
+            recorded_at = parse_datetime(recorded_at_str)
+            if not recorded_at:
+                recorded_at = timezone.now()
+        else:
+            recorded_at = timezone.now()
+
+        # Create location update
+        location = LocationUpdate.objects.create(
+            person=person,
+            latitude=latitude,
+            longitude=longitude,
+            accuracy_meters=accuracy_meters,
+            altitude_meters=altitude_meters,
+            source=source,
+            recorded_at=recorded_at,
+        )
+
+        return JsonResponse({"id": str(location.pk)}, status=201)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LocationBatchUpdateView(View):
+    """Submit multiple location updates at once.
+
+    POST /api/mobile/location/batch/
+    Headers: Authorization: Bearer <token>
+    {
+        "updates": [
+            {"latitude": 20.5, "longitude": -87.3, "recorded_at": "..."},
+            ...
+        ]
+    }
+    """
+
+    @method_decorator(require_auth_token_any)
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        updates = data.get("updates", [])
+        if not isinstance(updates, list):
+            return JsonResponse({"error": "updates must be an array"}, status=400)
+
+        # Get person for this user
+        try:
+            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        created_count = 0
+        from django.utils.dateparse import parse_datetime
+
+        for update in updates:
+            try:
+                latitude = Decimal(str(update.get("latitude", "")))
+                longitude = Decimal(str(update.get("longitude", "")))
+
+                if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+                    continue
+
+                accuracy_meters = None
+                if update.get("accuracy_meters"):
+                    try:
+                        accuracy_meters = Decimal(str(update["accuracy_meters"]))
+                    except (InvalidOperation, TypeError):
+                        pass
+
+                altitude_meters = None
+                if update.get("altitude_meters"):
+                    try:
+                        altitude_meters = Decimal(str(update["altitude_meters"]))
+                    except (InvalidOperation, TypeError):
+                        pass
+
+                source = update.get("source", "fused")
+                if source not in ["gps", "network", "fused", "manual"]:
+                    source = "fused"
+
+                recorded_at_str = update.get("recorded_at")
+                recorded_at = parse_datetime(recorded_at_str) if recorded_at_str else timezone.now()
+                if not recorded_at:
+                    recorded_at = timezone.now()
+
+                LocationUpdate.objects.create(
+                    person=person,
+                    latitude=latitude,
+                    longitude=longitude,
+                    accuracy_meters=accuracy_meters,
+                    altitude_meters=altitude_meters,
+                    source=source,
+                    recorded_at=recorded_at,
+                )
+                created_count += 1
+
+            except (InvalidOperation, TypeError):
+                continue
+
+        return JsonResponse({"created": created_count}, status=201)
+
+
+# =============================================================================
+# Location Settings
+# =============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LocationSettingsView(View):
+    """Get or update location sharing preferences.
+
+    GET /api/mobile/location/settings/
+    Headers: Authorization: Bearer <token>
+
+    PUT /api/mobile/location/settings/
+    Headers: Authorization: Bearer <token>
+    {
+        "visibility": "staff",
+        "is_tracking_enabled": true,
+        "tracking_interval_seconds": 60
+    }
+    """
+
+    @method_decorator(require_auth_token_any)
+    def get(self, request):
+        # Get person for this user
+        try:
+            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get or create preferences
+        pref, created = LocationSharingPreference.objects.get_or_create(
+            person=person,
+            defaults={
+                "visibility": "private",
+                "is_tracking_enabled": False,
+                "tracking_interval_seconds": 60,
+            }
+        )
+
+        return JsonResponse({
+            "visibility": pref.visibility,
+            "is_tracking_enabled": pref.is_tracking_enabled,
+            "tracking_interval_seconds": pref.tracking_interval_seconds,
+        })
+
+    @method_decorator(require_auth_token_any)
+    def put(self, request):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        # Get person for this user
+        try:
+            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get or create preferences
+        pref, created = LocationSharingPreference.objects.get_or_create(
+            person=person,
+            defaults={
+                "visibility": "private",
+                "is_tracking_enabled": False,
+                "tracking_interval_seconds": 60,
+            }
+        )
+
+        # Update visibility
+        visibility = data.get("visibility")
+        if visibility is not None:
+            valid_choices = ["private", "staff", "trip", "buddies", "public"]
+            if visibility not in valid_choices:
+                return JsonResponse(
+                    {"error": f"visibility must be one of: {', '.join(valid_choices)}"},
+                    status=400,
+                )
+            pref.visibility = visibility
+
+        # Update tracking enabled
+        is_tracking_enabled = data.get("is_tracking_enabled")
+        if is_tracking_enabled is not None:
+            pref.is_tracking_enabled = bool(is_tracking_enabled)
+
+        # Update tracking interval
+        tracking_interval = data.get("tracking_interval_seconds")
+        if tracking_interval is not None:
+            try:
+                interval = int(tracking_interval)
+                if interval < 10:
+                    interval = 10  # Minimum 10 seconds
+                elif interval > 3600:
+                    interval = 3600  # Maximum 1 hour
+                pref.tracking_interval_seconds = interval
+            except (ValueError, TypeError):
+                pass
+
+        pref.save()
+
+        return JsonResponse({
+            "visibility": pref.visibility,
+            "is_tracking_enabled": pref.is_tracking_enabled,
+            "tracking_interval_seconds": pref.tracking_interval_seconds,
+        })

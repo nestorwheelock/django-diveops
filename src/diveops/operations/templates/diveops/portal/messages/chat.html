@@ -1,5 +1,5 @@
 {% extends "portal_ui/base_portal.html" %}
-{% load portal_ui_tags %}
+{% load portal_ui_tags static %}
 
 {% block page_title %}{{ conversation.subject|default:"Conversation" }}{% endblock %}
 
@@ -41,6 +41,18 @@
                     </p>
                 </div>
             </div>
+            <!-- Call Button -->
+            {% if staff_person and conversation.status == 'active' %}
+            <div id="call-controls" class="hidden">
+                <button id="start-call-btn"
+                        type="button"
+                        class="inline-flex items-center px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                        title="Start video call">
+                    {% icon "video-camera" "w-5 h-5" %}
+                    <span class="ml-2 hidden sm:inline">Call</span>
+                </button>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -299,4 +311,273 @@
     });
 })();
 </script>
+
+{% if staff_person and conversation.status == 'active' %}
+<!-- WebRTC Video Call UI -->
+
+<!-- Incoming Call Modal -->
+<div id="incoming-call-modal"
+     class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black bg-opacity-50"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+            <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center animate-pulse">
+                {% icon "phone" "w-10 h-10 text-green-600" %}
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Incoming Call</h3>
+            <p id="caller-name" class="text-gray-500 mb-6">Someone is calling...</p>
+            <div id="call-type-badge" class="mb-6">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                    {% icon "video-camera" "w-4 h-4 mr-1" %}
+                    <span id="call-type-text">Video Call</span>
+                </span>
+            </div>
+            <div class="flex justify-center space-x-4">
+                <button id="reject-call-btn"
+                        class="flex-1 inline-flex items-center justify-center px-6 py-3 bg-red-500 text-white rounded-full hover:bg-red-600 transition-all">
+                    {% icon "x-mark" "w-6 h-6" %}
+                    <span class="ml-2">Decline</span>
+                </button>
+                <button id="accept-call-btn"
+                        class="flex-1 inline-flex items-center justify-center px-6 py-3 bg-green-500 text-white rounded-full hover:bg-green-600 transition-all">
+                    {% icon "phone" "w-6 h-6" %}
+                    <span class="ml-2">Accept</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Call Screen -->
+<div id="active-call-screen" class="fixed inset-0 z-50 bg-gray-900 hidden">
+    <video id="remote-video" class="w-full h-full object-cover" autoplay playsinline></video>
+    <div id="remote-video-placeholder" class="absolute inset-0 flex items-center justify-center bg-gray-800">
+        <div class="text-center">
+            <div class="w-32 h-32 mx-auto mb-4 rounded-full bg-gray-700 flex items-center justify-center">
+                {% icon "user" "w-16 h-16 text-gray-500" %}
+            </div>
+            <p id="remote-user-name" class="text-white text-xl">Connecting...</p>
+        </div>
+    </div>
+    <div class="absolute top-4 right-4 w-32 h-24 sm:w-48 sm:h-36 rounded-lg overflow-hidden shadow-lg border-2 border-white">
+        <video id="local-video" class="w-full h-full object-cover" style="transform: scaleX(-1);" autoplay playsinline muted></video>
+        <div id="local-video-placeholder" class="absolute inset-0 bg-gray-700 flex items-center justify-center hidden">
+            {% icon "video-camera-slash" "w-8 h-8 text-gray-500" %}
+        </div>
+    </div>
+    <div class="absolute top-4 left-4">
+        <span id="call-duration" class="text-white text-lg font-mono bg-black bg-opacity-50 px-3 py-1 rounded-full">00:00</span>
+    </div>
+    <div id="call-status" class="absolute top-16 left-4">
+        <span class="text-white text-sm bg-black bg-opacity-50 px-3 py-1 rounded-full">Connecting...</span>
+    </div>
+    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 sm:p-6">
+        <div class="flex items-center justify-center space-x-4 sm:space-x-6">
+            <button id="toggle-video-btn" class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center" title="Toggle video">
+                <span class="video-on">{% icon "video-camera" "w-6 h-6" %}</span>
+                <span class="video-off hidden">{% icon "video-camera-slash" "w-6 h-6" %}</span>
+            </button>
+            <button id="toggle-audio-btn" class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center" title="Toggle microphone">
+                <span class="audio-on">{% icon "microphone" "w-6 h-6" %}</span>
+                <span class="audio-off hidden">{% icon "speaker-x-mark" "w-6 h-6" %}</span>
+            </button>
+            <button id="hangup-btn" class="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center" title="End call">
+                {% icon "phone-x-mark" "w-8 h-8" %}
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Call Toast Notifications -->
+<div id="call-ended-toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 hidden">
+    <div class="bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-2">
+        {% icon "phone-x-mark" "w-5 h-5 text-red-400" %}
+        <span id="call-ended-message">Call ended</span>
+    </div>
+</div>
+
+<script src="{% static 'diveops/js/webrtc-client.js' %}"></script>
+<script>
+(function() {
+    const targetUserId = "{{ staff_person.pk }}";
+    const targetUserName = "{{ staff_person.full_name|default:staff_person.first_name }}";
+
+    const callControls = document.getElementById('call-controls');
+    const startCallBtn = document.getElementById('start-call-btn');
+    const incomingCallModal = document.getElementById('incoming-call-modal');
+    const acceptCallBtn = document.getElementById('accept-call-btn');
+    const rejectCallBtn = document.getElementById('reject-call-btn');
+    const callerName = document.getElementById('caller-name');
+    const callTypeText = document.getElementById('call-type-text');
+    const activeCallScreen = document.getElementById('active-call-screen');
+    const localVideo = document.getElementById('local-video');
+    const remoteVideo = document.getElementById('remote-video');
+    const remoteVideoPlaceholder = document.getElementById('remote-video-placeholder');
+    const localVideoPlaceholder = document.getElementById('local-video-placeholder');
+    const remoteUserName = document.getElementById('remote-user-name');
+    const callDuration = document.getElementById('call-duration');
+    const callStatus = document.getElementById('call-status');
+    const toggleVideoBtn = document.getElementById('toggle-video-btn');
+    const toggleAudioBtn = document.getElementById('toggle-audio-btn');
+    const hangupBtn = document.getElementById('hangup-btn');
+    const callEndedToast = document.getElementById('call-ended-toast');
+    const callEndedMessage = document.getElementById('call-ended-message');
+
+    let webrtc = null;
+    let callStartTime = null;
+    let durationInterval = null;
+    let pendingCallerId = null;
+    let pendingCallType = 'video';
+
+    function initWebRTC() {
+        webrtc = new DiveOpsWebRTC({
+            onConnected: (userId) => {
+                console.log('[CallUI] Connected as user', userId);
+                callControls.classList.remove('hidden');
+            },
+            onDisconnected: () => {
+                console.log('[CallUI] Disconnected');
+                callControls.classList.add('hidden');
+            },
+            onIncomingCall: ({ callerId, callType }) => {
+                console.log('[CallUI] Incoming call from', callerId);
+                pendingCallerId = callerId;
+                pendingCallType = callType;
+                callerName.textContent = `User ${callerId} is calling...`;
+                callTypeText.textContent = callType === 'video' ? 'Video Call' : 'Audio Call';
+                incomingCallModal.classList.remove('hidden');
+            },
+            onCallAccepted: () => {
+                console.log('[CallUI] Call accepted');
+                callStatus.querySelector('span').textContent = 'Connected';
+                startCallTimer();
+            },
+            onCallRejected: ({ rejectedBy }) => {
+                console.log('[CallUI] Call rejected by', rejectedBy);
+                hideActiveCall();
+                showToast('Call was declined');
+            },
+            onCallEnded: ({ endedBy, reason }) => {
+                console.log('[CallUI] Call ended', endedBy || reason);
+                hideActiveCall();
+                showToast(reason === 'connection_lost' ? 'Connection lost' : 'Call ended');
+            },
+            onLocalStream: (stream) => {
+                console.log('[CallUI] Got local stream');
+                localVideo.srcObject = stream;
+                localVideoPlaceholder.classList.add('hidden');
+            },
+            onRemoteStream: (stream) => {
+                console.log('[CallUI] Got remote stream');
+                remoteVideo.srcObject = stream;
+                remoteVideoPlaceholder.classList.add('hidden');
+            },
+            onUserOffline: (userId) => {
+                console.log('[CallUI] User offline:', userId);
+                showToast('User is offline');
+            },
+            onError: (error) => {
+                console.error('[CallUI] Error:', error);
+                showToast('Call error: ' + error.message);
+            }
+        });
+        webrtc.connect();
+    }
+
+    if (startCallBtn) {
+        startCallBtn.addEventListener('click', async () => {
+            if (!targetUserId) { showToast('No user to call'); return; }
+            showActiveCall();
+            callStatus.querySelector('span').textContent = 'Calling...';
+            remoteUserName.textContent = targetUserName;
+            await webrtc.call(targetUserId, 'video');
+        });
+    }
+
+    if (acceptCallBtn) {
+        acceptCallBtn.addEventListener('click', async () => {
+            incomingCallModal.classList.add('hidden');
+            showActiveCall();
+            callStatus.querySelector('span').textContent = 'Connecting...';
+            remoteUserName.textContent = `User ${pendingCallerId}`;
+            await webrtc.answer(pendingCallerId, pendingCallType);
+        });
+    }
+
+    if (rejectCallBtn) {
+        rejectCallBtn.addEventListener('click', () => {
+            incomingCallModal.classList.add('hidden');
+            webrtc.reject(pendingCallerId);
+            pendingCallerId = null;
+        });
+    }
+
+    if (hangupBtn) {
+        hangupBtn.addEventListener('click', () => {
+            webrtc.hangup();
+            hideActiveCall();
+        });
+    }
+
+    if (toggleVideoBtn) {
+        toggleVideoBtn.addEventListener('click', () => {
+            const enabled = webrtc.toggleVideo();
+            toggleVideoBtn.querySelector('.video-on').classList.toggle('hidden', !enabled);
+            toggleVideoBtn.querySelector('.video-off').classList.toggle('hidden', enabled);
+            localVideoPlaceholder.classList.toggle('hidden', enabled);
+        });
+    }
+
+    if (toggleAudioBtn) {
+        toggleAudioBtn.addEventListener('click', () => {
+            const enabled = webrtc.toggleAudio();
+            toggleAudioBtn.querySelector('.audio-on').classList.toggle('hidden', !enabled);
+            toggleAudioBtn.querySelector('.audio-off').classList.toggle('hidden', enabled);
+        });
+    }
+
+    function showActiveCall() {
+        activeCallScreen.classList.remove('hidden');
+        remoteVideoPlaceholder.classList.remove('hidden');
+        localVideoPlaceholder.classList.add('hidden');
+        callDuration.textContent = '00:00';
+    }
+
+    function hideActiveCall() {
+        activeCallScreen.classList.add('hidden');
+        stopCallTimer();
+        localVideo.srcObject = null;
+        remoteVideo.srcObject = null;
+        toggleVideoBtn.querySelector('.video-on').classList.remove('hidden');
+        toggleVideoBtn.querySelector('.video-off').classList.add('hidden');
+        toggleAudioBtn.querySelector('.audio-on').classList.remove('hidden');
+        toggleAudioBtn.querySelector('.audio-off').classList.add('hidden');
+    }
+
+    function startCallTimer() {
+        callStartTime = Date.now();
+        durationInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const seconds = (elapsed % 60).toString().padStart(2, '0');
+            callDuration.textContent = `${minutes}:${seconds}`;
+        }, 1000);
+    }
+
+    function stopCallTimer() {
+        if (durationInterval) { clearInterval(durationInterval); durationInterval = null; }
+        callStartTime = null;
+    }
+
+    function showToast(message) {
+        callEndedMessage.textContent = message;
+        callEndedToast.classList.remove('hidden');
+        setTimeout(() => { callEndedToast.classList.add('hidden'); }, 3000);
+    }
+
+    document.addEventListener('DOMContentLoaded', initWebRTC);
+    window.addEventListener('beforeunload', () => { if (webrtc) webrtc.disconnect(); });
+})();
+</script>
+{% endif %}
 {% endblock %}

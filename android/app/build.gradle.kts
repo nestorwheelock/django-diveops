@@ -45,6 +45,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // Use Java 17 toolchain to avoid Java 21 compatibility issues
+    kotlin {
+        jvmToolchain(17)
+    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -91,6 +95,15 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Google Play Services Location (for GPS tracking)
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // WebRTC for video/audio calling
+    implementation("io.getstream:stream-webrtc-android:1.1.1")
+
+    // OkHttp WebSocket for signaling
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
