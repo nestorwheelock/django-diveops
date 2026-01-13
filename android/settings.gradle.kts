@@ -17,5 +17,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DiveOps Chat"
+rootProject.name = "Buceo Feliz"
 include(":app")

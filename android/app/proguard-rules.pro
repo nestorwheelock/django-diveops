@@ -3,7 +3,7 @@
 # proguardFiles setting in build.gradle.kts.
 
 # Keep data classes used by Retrofit/Gson
--keepclassmembers class com.diveops.chat.api.** { *; }
+-keepclassmembers class com.buceofeliz.app.api.** { *; }
 
 # Firebase
 -keep class com.google.firebase.** { *; }

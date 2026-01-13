@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">DiveOps Chat</string>
+    <string name="app_name">Buceo Feliz</string>
     <string name="login_title">Staff Login</string>
     <string name="email_label">Email</string>
     <string name="password_label">Password</string>

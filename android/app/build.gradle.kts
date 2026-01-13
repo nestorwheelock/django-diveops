@@ -5,15 +5,24 @@ plugins {
 }
 
 android {
-    namespace = "com.diveops.chat"
+    namespace = "com.buceofeliz.app"
     compileSdk = 34
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../buceo-release.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "buceofeliz"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "buceo"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "buceofeliz"
+        }
+    }
+
     defaultConfig {
-        applicationId = "com.diveops.chat"
+        applicationId = "com.buceofeliz.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1-alpha"
+        versionCode = 3
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -27,6 +36,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
