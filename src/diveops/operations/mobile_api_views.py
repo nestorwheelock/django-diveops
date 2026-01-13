@@ -569,7 +569,7 @@ class CustomerLoginView(View):
 
         # Get Person record (required for customer features)
         try:
-            person = Person.objects.get(user=user, deleted_at__isnull=True)
+            person = Person.objects.get(user_account=user, deleted_at__isnull=True)
         except Person.DoesNotExist:
             return JsonResponse({"error": "No profile found for this user"}, status=403)
 
@@ -613,7 +613,7 @@ class CustomerBookingsView(View):
     def get(self, request):
         # Get person for this user
         try:
-            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
         except Person.DoesNotExist:
             return JsonResponse({"error": "No profile found"}, status=404)
 
@@ -693,7 +693,7 @@ class LocationUpdateView(View):
 
         # Get person for this user
         try:
-            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
         except Person.DoesNotExist:
             return JsonResponse({"error": "No profile found"}, status=404)
 
@@ -779,7 +779,7 @@ class LocationBatchUpdateView(View):
 
         # Get person for this user
         try:
-            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
         except Person.DoesNotExist:
             return JsonResponse({"error": "No profile found"}, status=404)
 
@@ -859,7 +859,7 @@ class LocationSettingsView(View):
     def get(self, request):
         # Get person for this user
         try:
-            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
         except Person.DoesNotExist:
             return JsonResponse({"error": "No profile found"}, status=404)
 
@@ -888,7 +888,7 @@ class LocationSettingsView(View):
 
         # Get person for this user
         try:
-            person = Person.objects.get(user=request.user, deleted_at__isnull=True)
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
         except Person.DoesNotExist:
             return JsonResponse({"error": "No profile found"}, status=404)
 
