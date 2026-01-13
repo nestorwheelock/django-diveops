@@ -59,7 +59,16 @@ async fn allocate(
     })
 }
 
-/// Calculate pricing totals from lines
+/// Calculate pricing totals from lines.
+///
+/// NOTE: This endpoint is currently unused by Django. Benchmarks show that for pure
+/// calculations without DB access, Python is faster due to HTTP round-trip overhead
+/// (~1.3ms vs 0.003ms). Django performs totals calculations locally.
+///
+/// Keeping this endpoint for potential future use:
+/// - Direct API calls from mobile app or other clients
+/// - Batch operations where multiple calculations justify HTTP overhead
+/// - Future optimizations (request batching, connection pooling)
 async fn totals(
     Json(request): Json<CalculateTotalsRequest>,
 ) -> Json<PricingTotalsResponse> {
