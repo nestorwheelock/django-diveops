@@ -34,6 +34,7 @@ import com.buceofeliz.app.data.AuthRepository
 import com.buceofeliz.app.data.BookingsRepository
 import com.buceofeliz.app.data.ChatRepository
 import com.buceofeliz.app.data.LocationRepository
+import com.buceofeliz.app.data.ProfileRepository
 import com.buceofeliz.app.data.UpdateRepository
 import com.buceofeliz.app.location.LocationTrackingService
 import com.buceofeliz.app.ui.BookingsScreen
@@ -44,6 +45,8 @@ import com.buceofeliz.app.ui.CustomerHomeScreen
 import com.buceofeliz.app.ui.IncomingCallDialog
 import com.buceofeliz.app.ui.LocationSettingsScreen
 import com.buceofeliz.app.ui.LoginScreen
+import com.buceofeliz.app.ui.ProfileEditScreen
+import com.buceofeliz.app.ui.ProfileScreen
 import com.buceofeliz.app.ui.theme.BuceoFelizTheme
 import com.buceofeliz.app.webrtc.WebRTCManager
 import com.buceofeliz.app.webrtc.WebRTCSignalingClient
@@ -59,6 +62,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var updateRepository: UpdateRepository
     private lateinit var bookingsRepository: BookingsRepository
     private lateinit var locationRepository: LocationRepository
+    private lateinit var profileRepository: ProfileRepository
 
     // WebRTC components
     private var signalingClient: WebRTCSignalingClient? = null
@@ -159,6 +163,7 @@ class MainActivity : ComponentActivity() {
         updateRepository = UpdateRepository(this)
         bookingsRepository = BookingsRepository(authRepository)
         locationRepository = LocationRepository(authRepository)
+        profileRepository = ProfileRepository(authRepository)
 
         askNotificationPermission()
 
@@ -409,6 +414,7 @@ class MainActivity : ComponentActivity() {
                     userName = userInfo,
                     onBookingsClick = { navController.navigate("bookings") },
                     onMessagesClick = { navController.navigate("conversations") },
+                    onProfileClick = { navController.navigate("profile") },
                     onLocationSettingsClick = { navController.navigate("location_settings") },
                     onLogout = {
                         coroutineScope.launch {
@@ -458,6 +464,99 @@ class MainActivity : ComponentActivity() {
                     isLoading = isLoading,
                     errorMessage = errorMessage,
                     onRefresh = { loadBookings() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // Profile Screen
+            composable("profile") {
+                var profile by remember { mutableStateOf<com.buceofeliz.app.api.ProfileResponse?>(null) }
+                var certifications by remember { mutableStateOf<List<com.buceofeliz.app.api.CertificationItem>>(emptyList()) }
+                var emergencyContacts by remember { mutableStateOf<List<com.buceofeliz.app.api.EmergencyContactItem>>(emptyList()) }
+                var isLoading by remember { mutableStateOf(true) }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+
+                fun loadProfile() {
+                    coroutineScope.launch {
+                        isLoading = true
+                        errorMessage = null
+
+                        // Load profile, certifications, and emergency contacts in parallel
+                        val profileResult = profileRepository.getProfile()
+                        val certsResult = profileRepository.getCertifications()
+                        val contactsResult = profileRepository.getEmergencyContacts()
+
+                        profileResult.fold(
+                            onSuccess = { profile = it },
+                            onFailure = { e -> errorMessage = e.message ?: "Failed to load profile" }
+                        )
+
+                        certsResult.fold(
+                            onSuccess = { certifications = it },
+                            onFailure = { /* Non-critical, ignore */ }
+                        )
+
+                        contactsResult.fold(
+                            onSuccess = { emergencyContacts = it },
+                            onFailure = { /* Non-critical, ignore */ }
+                        )
+
+                        isLoading = false
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    loadProfile()
+                }
+
+                ProfileScreen(
+                    profile = profile,
+                    certifications = certifications,
+                    emergencyContacts = emergencyContacts,
+                    isLoading = isLoading,
+                    errorMessage = errorMessage,
+                    onRefresh = { loadProfile() },
+                    onEditGear = { navController.navigate("profile_edit") },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // Profile Edit Screen
+            composable("profile_edit") {
+                var profile by remember { mutableStateOf<com.buceofeliz.app.api.ProfileResponse?>(null) }
+                var isLoading by remember { mutableStateOf(true) }
+                var isSaving by remember { mutableStateOf(false) }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+
+                LaunchedEffect(Unit) {
+                    profileRepository.getProfile().fold(
+                        onSuccess = { profile = it },
+                        onFailure = { e -> errorMessage = e.message }
+                    )
+                    isLoading = false
+                }
+
+                ProfileEditScreen(
+                    currentGearSizing = profile?.gear_sizing,
+                    currentEquipmentOwnership = profile?.equipment_ownership ?: "none",
+                    isLoading = isLoading || isSaving,
+                    errorMessage = errorMessage,
+                    onSave = { request ->
+                        coroutineScope.launch {
+                            isSaving = true
+                            errorMessage = null
+
+                            profileRepository.updateProfile(request).fold(
+                                onSuccess = {
+                                    navController.popBackStack()
+                                },
+                                onFailure = { e ->
+                                    errorMessage = e.message ?: "Failed to save profile"
+                                    isSaving = false
+                                }
+                            )
+                        }
+                    },
                     onBack = { navController.popBackStack() }
                 )
             }

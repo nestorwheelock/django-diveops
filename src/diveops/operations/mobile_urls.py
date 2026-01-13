@@ -36,6 +36,11 @@ urlpatterns = [
     # Customer Bookings
     path("customer/bookings/", mobile_api_views.CustomerBookingsView.as_view(), name="customer-bookings"),
 
+    # Customer Profile
+    path("customer/profile/", mobile_api_views.CustomerProfileView.as_view(), name="customer-profile"),
+    path("customer/certifications/", mobile_api_views.CustomerCertificationsView.as_view(), name="customer-certifications"),
+    path("customer/emergency-contacts/", mobile_api_views.CustomerEmergencyContactsView.as_view(), name="customer-emergency-contacts"),
+
     # Location Tracking
     path("location/", mobile_api_views.LocationUpdateView.as_view(), name="location-update"),
     path("location/batch/", mobile_api_views.LocationBatchUpdateView.as_view(), name="location-batch"),

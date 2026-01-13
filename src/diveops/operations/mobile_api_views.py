@@ -34,6 +34,9 @@ from django_communication.models import (
 from .models import (
     AppVersion,
     Booking,
+    DiverCertification,
+    DiverProfile,
+    EmergencyContact,
     LocationSharingPreference,
     LocationUpdate,
 )
@@ -631,8 +634,8 @@ class CustomerBookingsView(View):
         bookings = (
             Booking.objects
             .filter(diver=diver, deleted_at__isnull=True)
-            .select_related("excursion")
-            .order_by("excursion__departure_date", "excursion__departure_time")
+            .select_related("excursion", "excursion__dive_site", "excursion__excursion_type")
+            .order_by("excursion__departure_time")
         )
 
         upcoming = []
@@ -643,16 +646,29 @@ class CustomerBookingsView(View):
             if not excursion or excursion.deleted_at:
                 continue
 
+            # Get excursion name from excursion_type or site names
+            excursion_name = ""
+            if excursion.excursion_type:
+                excursion_name = excursion.excursion_type.name
+            elif excursion.dive_site:
+                excursion_name = excursion.dive_site.name
+            else:
+                excursion_name = excursion.site_names or "Dive Trip"
+
+            # Extract date and time from departure_time
+            departure_date = excursion.departure_time.date() if excursion.departure_time else None
+            departure_time = excursion.departure_time.time() if excursion.departure_time else None
+
             booking_data = {
                 "id": str(booking.pk),
                 "excursion_id": str(excursion.pk),
-                "excursion_name": excursion.name,
-                "departure_date": excursion.departure_date.isoformat() if excursion.departure_date else None,
-                "departure_time": excursion.departure_time.isoformat() if excursion.departure_time else None,
+                "excursion_name": excursion_name,
+                "departure_date": departure_date.isoformat() if departure_date else None,
+                "departure_time": departure_time.isoformat() if departure_time else None,
                 "status": booking.status,
             }
 
-            if excursion.departure_date and excursion.departure_date >= today:
+            if departure_date and departure_date >= today:
                 upcoming.append(booking_data)
             else:
                 past.append(booking_data)
@@ -938,3 +954,243 @@ class LocationSettingsView(View):
             "is_tracking_enabled": pref.is_tracking_enabled,
             "tracking_interval_seconds": pref.tracking_interval_seconds,
         })
+
+
+# =============================================================================
+# Customer Profile
+# =============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomerProfileView(View):
+    """Get or update customer diver profile.
+
+    GET /api/mobile/customer/profile/
+    Headers: Authorization: Bearer <token>
+
+    PUT /api/mobile/customer/profile/
+    Headers: Authorization: Bearer <token>
+    {
+        "weight_kg": "76.0",
+        "wetsuit_size": "L",
+        ...
+    }
+
+    Returns diver profile with gear sizing, experience, and medical status.
+    """
+
+    @method_decorator(require_auth_token_any)
+    def get(self, request):
+        # Get person for this user
+        try:
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get diver profile
+        try:
+            diver = DiverProfile.objects.get(person=person, deleted_at__isnull=True)
+        except DiverProfile.DoesNotExist:
+            return JsonResponse({"error": "No diver profile found"}, status=404)
+
+        # Get highest certification
+        highest_cert = (
+            DiverCertification.objects
+            .filter(diver=diver, deleted_at__isnull=True)
+            .select_related("level")
+            .order_by("-level__rank")
+            .first()
+        )
+        highest_cert_name = highest_cert.level.name if highest_cert and highest_cert.level else None
+
+        return JsonResponse({
+            "person": {
+                "first_name": person.first_name or "",
+                "last_name": person.last_name or "",
+                "email": person.email or "",
+            },
+            "experience": {
+                "total_dives": diver.total_dives or 0,
+                "highest_certification": highest_cert_name,
+            },
+            "medical": {
+                "clearance_valid_until": diver.medical_clearance_valid_until.isoformat() if diver.medical_clearance_valid_until else None,
+                "is_current": diver.is_medical_current(),
+                "waiver_valid": diver.is_waiver_valid(),
+            },
+            "gear_sizing": {
+                "weight_kg": str(diver.weight_kg) if diver.weight_kg else None,
+                "height_cm": diver.height_cm,
+                "wetsuit_size": diver.wetsuit_size or "",
+                "bcd_size": diver.bcd_size or "",
+                "fin_size": diver.fin_size or "",
+                "mask_fit": diver.mask_fit or "",
+                "glove_size": diver.glove_size or "",
+                "weight_required_kg": str(diver.weight_required_kg) if diver.weight_required_kg else None,
+                "gear_notes": diver.gear_notes or "",
+            },
+            "equipment_ownership": diver.equipment_ownership or "none",
+        })
+
+    @method_decorator(require_auth_token_any)
+    def put(self, request):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        # Get person for this user
+        try:
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get diver profile
+        try:
+            diver = DiverProfile.objects.get(person=person, deleted_at__isnull=True)
+        except DiverProfile.DoesNotExist:
+            return JsonResponse({"error": "No diver profile found"}, status=404)
+
+        # Update gear sizing fields only (customers can't change other fields)
+        if "weight_kg" in data:
+            try:
+                diver.weight_kg = Decimal(str(data["weight_kg"])) if data["weight_kg"] else None
+            except (InvalidOperation, TypeError):
+                pass
+
+        if "height_cm" in data:
+            try:
+                diver.height_cm = int(data["height_cm"]) if data["height_cm"] else None
+            except (ValueError, TypeError):
+                pass
+
+        if "wetsuit_size" in data:
+            diver.wetsuit_size = str(data["wetsuit_size"])[:10]
+
+        if "bcd_size" in data:
+            diver.bcd_size = str(data["bcd_size"])[:10]
+
+        if "fin_size" in data:
+            diver.fin_size = str(data["fin_size"])[:20]
+
+        if "mask_fit" in data:
+            diver.mask_fit = str(data["mask_fit"])[:50]
+
+        if "glove_size" in data:
+            diver.glove_size = str(data["glove_size"])[:10]
+
+        if "weight_required_kg" in data:
+            try:
+                diver.weight_required_kg = Decimal(str(data["weight_required_kg"])) if data["weight_required_kg"] else None
+            except (InvalidOperation, TypeError):
+                pass
+
+        if "gear_notes" in data:
+            diver.gear_notes = str(data["gear_notes"])
+
+        if "equipment_ownership" in data:
+            if data["equipment_ownership"] in ["none", "partial", "full"]:
+                diver.equipment_ownership = data["equipment_ownership"]
+
+        diver.save()
+
+        # Return updated profile (call GET logic)
+        return self.get(request)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomerCertificationsView(View):
+    """List customer's dive certifications.
+
+    GET /api/mobile/customer/certifications/
+    Headers: Authorization: Bearer <token>
+
+    Returns list of certifications with agency and level info.
+    """
+
+    @method_decorator(require_auth_token_any)
+    def get(self, request):
+        # Get person for this user
+        try:
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get diver profile
+        try:
+            diver = DiverProfile.objects.get(person=person, deleted_at__isnull=True)
+        except DiverProfile.DoesNotExist:
+            return JsonResponse({"certifications": []})
+
+        # Get certifications
+        certifications = (
+            DiverCertification.objects
+            .filter(diver=diver, deleted_at__isnull=True)
+            .select_related("level", "level__agency")
+            .order_by("-level__rank")
+        )
+
+        result = []
+        for cert in certifications:
+            result.append({
+                "id": str(cert.pk),
+                "level_name": cert.level.name if cert.level else "",
+                "agency_name": cert.level.agency.name if cert.level and cert.level.agency else "",
+                "card_number": cert.card_number or "",
+                "issued_on": cert.issued_on.isoformat() if cert.issued_on else None,
+                "expires_on": cert.expires_on.isoformat() if cert.expires_on else None,
+                "is_verified": cert.is_verified,
+            })
+
+        return JsonResponse({"certifications": result})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomerEmergencyContactsView(View):
+    """List customer's emergency contacts.
+
+    GET /api/mobile/customer/emergency-contacts/
+    Headers: Authorization: Bearer <token>
+
+    Returns list of emergency contacts ordered by priority.
+    """
+
+    @method_decorator(require_auth_token_any)
+    def get(self, request):
+        # Get person for this user
+        try:
+            person = Person.objects.get(user_account=request.user, deleted_at__isnull=True)
+        except Person.DoesNotExist:
+            return JsonResponse({"error": "No profile found"}, status=404)
+
+        # Get diver profile
+        try:
+            diver = DiverProfile.objects.get(person=person, deleted_at__isnull=True)
+        except DiverProfile.DoesNotExist:
+            return JsonResponse({"contacts": []})
+
+        # Get emergency contacts
+        contacts = (
+            EmergencyContact.objects
+            .filter(diver=diver, deleted_at__isnull=True)
+            .select_related("contact_person")
+            .order_by("priority")
+        )
+
+        result = []
+        for contact in contacts:
+            contact_person = contact.contact_person
+            name = ""
+            if contact_person:
+                name = f"{contact_person.first_name or ''} {contact_person.last_name or ''}".strip()
+                if not name:
+                    name = contact_person.email or "Unknown"
+
+            result.append({
+                "id": str(contact.pk),
+                "name": name,
+                "relationship": contact.relationship or "",
+                "priority": contact.priority or 1,
+            })
+
+        return JsonResponse({"contacts": result})

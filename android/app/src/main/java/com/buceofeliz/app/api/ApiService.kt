@@ -156,6 +156,84 @@ data class ErrorResponse(
     val error: String
 )
 
+// Customer Profile
+data class ProfileResponse(
+    val person: PersonInfo,
+    val experience: ExperienceInfo,
+    val medical: MedicalInfo,
+    val gear_sizing: GearSizing,
+    val equipment_ownership: String
+)
+
+data class PersonInfo(
+    val first_name: String,
+    val last_name: String,
+    val email: String
+)
+
+data class ExperienceInfo(
+    val total_dives: Int,
+    val highest_certification: String?
+)
+
+data class MedicalInfo(
+    val clearance_valid_until: String?,
+    val is_current: Boolean,
+    val waiver_valid: Boolean
+)
+
+data class GearSizing(
+    val weight_kg: String?,
+    val height_cm: Int?,
+    val wetsuit_size: String,
+    val bcd_size: String,
+    val fin_size: String,
+    val mask_fit: String,
+    val glove_size: String,
+    val weight_required_kg: String?,
+    val gear_notes: String
+)
+
+data class ProfileUpdateRequest(
+    val weight_kg: String? = null,
+    val height_cm: Int? = null,
+    val wetsuit_size: String? = null,
+    val bcd_size: String? = null,
+    val fin_size: String? = null,
+    val mask_fit: String? = null,
+    val glove_size: String? = null,
+    val weight_required_kg: String? = null,
+    val gear_notes: String? = null,
+    val equipment_ownership: String? = null
+)
+
+// Customer Certifications
+data class CertificationsResponse(
+    val certifications: List<CertificationItem>
+)
+
+data class CertificationItem(
+    val id: String,
+    val level_name: String,
+    val agency_name: String,
+    val card_number: String?,
+    val issued_on: String?,
+    val expires_on: String?,
+    val is_verified: Boolean
+)
+
+// Customer Emergency Contacts
+data class EmergencyContactsResponse(
+    val contacts: List<EmergencyContactItem>
+)
+
+data class EmergencyContactItem(
+    val id: String,
+    val name: String,
+    val relationship: String,
+    val priority: Int
+)
+
 interface ApiService {
 
     // Authentication (Staff)
@@ -235,4 +313,28 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body request: LocationSettingsRequest
     ): Response<LocationSettingsResponse>
+
+    // Customer Profile
+    @GET("api/mobile/customer/profile/")
+    suspend fun getProfile(
+        @Header("Authorization") token: String
+    ): Response<ProfileResponse>
+
+    @PUT("api/mobile/customer/profile/")
+    suspend fun updateProfile(
+        @Header("Authorization") token: String,
+        @Body request: ProfileUpdateRequest
+    ): Response<ProfileResponse>
+
+    // Customer Certifications
+    @GET("api/mobile/customer/certifications/")
+    suspend fun getCertifications(
+        @Header("Authorization") token: String
+    ): Response<CertificationsResponse>
+
+    // Customer Emergency Contacts
+    @GET("api/mobile/customer/emergency-contacts/")
+    suspend fun getEmergencyContacts(
+        @Header("Authorization") token: String
+    ): Response<EmergencyContactsResponse>
 }

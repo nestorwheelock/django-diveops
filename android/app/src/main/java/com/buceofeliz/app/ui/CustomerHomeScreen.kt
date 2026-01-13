@@ -29,6 +29,7 @@ fun CustomerHomeScreen(
     userName: String,
     onBookingsClick: () -> Unit,
     onMessagesClick: () -> Unit,
+    onProfileClick: () -> Unit,
     onLocationSettingsClick: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -94,6 +95,16 @@ fun CustomerHomeScreen(
                     onClick = {
                         scope.launch { drawerState.close() }
                         onMessagesClick()
+                    }
+                )
+
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    label = { Text("My Profile") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onProfileClick()
                     }
                 )
 
@@ -213,6 +224,15 @@ fun CustomerHomeScreen(
                 title = "Messages",
                 description = "Chat with dive shop staff",
                 onClick = onMessagesClick
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            MenuCard(
+                icon = Icons.Default.Person,
+                title = "My Profile",
+                description = "View and update your diver profile",
+                onClick = onProfileClick
             )
 
             Spacer(modifier = Modifier.height(12.dp))
