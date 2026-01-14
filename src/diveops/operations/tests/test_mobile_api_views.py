@@ -18,12 +18,14 @@ from django.test import Client
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
-from django_parties.models import Person
+from django_parties.models import Organization, Person
 
 from diveops.operations.models import (
     AppVersion,
     Booking,
+    DiverProfile,
     Excursion,
+    ExcursionType,
     LocationSharingPreference,
     LocationUpdate,
 )
@@ -117,6 +119,27 @@ def force_update_version(db):
         is_force_update=True,
         min_supported_version=2,
         release_notes="Major update required",
+    )
+
+
+@pytest.fixture
+def dive_shop(db):
+    """Create a dive shop organization for testing."""
+    return Organization.objects.create(
+        name="Test Dive Shop",
+        org_type="dive_shop",
+    )
+
+
+@pytest.fixture
+def excursion_type(db):
+    """Create an excursion type for testing."""
+    return ExcursionType.objects.create(
+        name="Morning Reef Dive",
+        slug="morning-reef-dive",
+        dive_mode="boat",
+        time_of_day="day",
+        base_price=Decimal("150.00"),
     )
 
 
@@ -294,31 +317,32 @@ class TestCustomerBookingsView:
         assert data["upcoming"] == []
         assert data["past"] == []
 
-    @pytest.mark.skip(reason="Test uses incorrect Excursion field names - needs update")
-    def test_bookings_with_data(self, api_client, customer_token, customer_person, db):
+    def test_bookings_with_data(
+        self, api_client, customer_token, customer_person, dive_shop, excursion_type
+    ):
         """Return bookings categorized by upcoming/past."""
-        from diveops.operations.models import DiverProfile, Excursion
-
         # Create diver profile for customer
         diver = DiverProfile.objects.create(
             person=customer_person,
         )
 
-        # Create excursions
-        tomorrow = timezone.now().date() + timedelta(days=1)
-        yesterday = timezone.now().date() - timedelta(days=1)
+        # Create excursions with proper field names
+        tomorrow = timezone.now() + timedelta(days=1)
+        yesterday = timezone.now() - timedelta(days=1)
 
         upcoming_excursion = Excursion.objects.create(
-            name="Reef Dive Tomorrow",
-            departure_date=tomorrow,
-            departure_time=time(9, 0),
+            dive_shop=dive_shop,
+            excursion_type=excursion_type,
+            departure_time=tomorrow,
             capacity=10,
+            status="scheduled",
         )
         past_excursion = Excursion.objects.create(
-            name="Reef Dive Yesterday",
-            departure_date=yesterday,
-            departure_time=time(9, 0),
+            dive_shop=dive_shop,
+            excursion_type=excursion_type,
+            departure_time=yesterday,
             capacity=10,
+            status="completed",
         )
 
         # Create bookings
@@ -342,7 +366,8 @@ class TestCustomerBookingsView:
         data = response.json()
         assert len(data["upcoming"]) == 1
         assert len(data["past"]) == 1
-        assert data["upcoming"][0]["excursion_name"] == "Reef Dive Tomorrow"
+        # Name comes from excursion_type fixture
+        assert data["upcoming"][0]["excursion_name"] == "Morning Reef Dive"
 
 
 # =============================================================================
@@ -530,3 +555,206 @@ class TestLocationSettingsView:
         )
 
         assert response.status_code == 400
+
+
+# =============================================================================
+# Customer Profile Tests (P1 - Auth Critical)
+# =============================================================================
+
+
+@pytest.fixture
+def diver_profile(db, customer_person):
+    """Create a DiverProfile for the customer."""
+    from diveops.operations.models import DiverProfile
+    return DiverProfile.objects.create(
+        person=customer_person,
+        total_dives=50,
+        weight_kg=Decimal("75.5"),
+        height_cm=175,
+        wetsuit_size="L",
+        bcd_size="M",
+        fin_size="42",
+        equipment_ownership="partial",
+    )
+
+
+@pytest.fixture
+def diver_certification(db, diver_profile):
+    """Create a certification for the diver."""
+    from diveops.operations.models import CertificationLevel, DiverCertification
+    level = CertificationLevel.objects.create(
+        name="Advanced Open Water",
+        agency="PADI",
+        rank=2,
+    )
+    return DiverCertification.objects.create(
+        diver=diver_profile,
+        level=level,
+        card_number="12345678",
+        issued_on=date(2020, 6, 15),
+    )
+
+
+@pytest.fixture
+def emergency_contact(db, customer_person):
+    """Create an emergency contact for the customer."""
+    from diveops.operations.models import EmergencyContact
+    return EmergencyContact.objects.create(
+        person=customer_person,
+        name="Jane Diver",
+        relationship="Spouse",
+        phone="+1-555-123-4567",
+        priority=1,
+    )
+
+
+class TestCustomerProfileViewAuth:
+    """Auth tests for GET/PUT /api/mobile/customer/profile/"""
+
+    def test_profile_get_anonymous_returns_401(self, api_client):
+        """Anonymous request returns 401."""
+        response = api_client.get("/api/mobile/customer/profile/")
+        assert response.status_code == 401
+        assert "error" in response.json()
+
+    def test_profile_get_invalid_token_returns_401(self, api_client):
+        """Invalid token returns 401."""
+        response = api_client.get(
+            "/api/mobile/customer/profile/",
+            HTTP_AUTHORIZATION="Bearer invalid_token_here",
+        )
+        assert response.status_code == 401
+
+    def test_profile_get_success(self, api_client, customer_token, diver_profile):
+        """Valid token returns profile data."""
+        response = api_client.get(
+            "/api/mobile/customer/profile/",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "person" in data
+        assert "gear_sizing" in data
+        assert data["gear_sizing"]["wetsuit_size"] == "L"
+
+    def test_profile_get_no_diver_returns_404(self, api_client, customer_token, customer_person):
+        """Returns 404 if user has no diver profile."""
+        # customer_person exists but no DiverProfile
+        response = api_client.get(
+            "/api/mobile/customer/profile/",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 404
+
+    def test_profile_put_anonymous_returns_401(self, api_client):
+        """Anonymous PUT returns 401."""
+        response = api_client.put(
+            "/api/mobile/customer/profile/",
+            data=json.dumps({"wetsuit_size": "XL"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 401
+
+    def test_profile_put_invalid_token_returns_401(self, api_client):
+        """Invalid token PUT returns 401."""
+        response = api_client.put(
+            "/api/mobile/customer/profile/",
+            data=json.dumps({"wetsuit_size": "XL"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer invalid_token",
+        )
+        assert response.status_code == 401
+
+    def test_profile_put_success(self, api_client, customer_token, diver_profile):
+        """Valid PUT updates profile."""
+        response = api_client.put(
+            "/api/mobile/customer/profile/",
+            data=json.dumps({
+                "wetsuit_size": "XL",
+                "weight_kg": "80.0",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["gear_sizing"]["wetsuit_size"] == "XL"
+        assert data["gear_sizing"]["weight_kg"] == "80.0"
+
+
+class TestCustomerCertificationsViewAuth:
+    """Auth tests for GET /api/mobile/customer/certifications/"""
+
+    def test_certifications_anonymous_returns_401(self, api_client):
+        """Anonymous request returns 401."""
+        response = api_client.get("/api/mobile/customer/certifications/")
+        assert response.status_code == 401
+
+    def test_certifications_invalid_token_returns_401(self, api_client):
+        """Invalid token returns 401."""
+        response = api_client.get(
+            "/api/mobile/customer/certifications/",
+            HTTP_AUTHORIZATION="Bearer invalid_token",
+        )
+        assert response.status_code == 401
+
+    def test_certifications_success(self, api_client, customer_token, diver_certification):
+        """Valid token returns certifications."""
+        response = api_client.get(
+            "/api/mobile/customer/certifications/",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "certifications" in data
+        assert len(data["certifications"]) == 1
+        assert data["certifications"][0]["level_name"] == "Advanced Open Water"
+
+    def test_certifications_empty_list(self, api_client, customer_token, diver_profile):
+        """Returns empty list if no certifications."""
+        response = api_client.get(
+            "/api/mobile/customer/certifications/",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["certifications"] == []
+
+
+class TestCustomerEmergencyContactsViewAuth:
+    """Auth tests for GET /api/mobile/customer/emergency-contacts/"""
+
+    def test_contacts_anonymous_returns_401(self, api_client):
+        """Anonymous request returns 401."""
+        response = api_client.get("/api/mobile/customer/emergency-contacts/")
+        assert response.status_code == 401
+
+    def test_contacts_invalid_token_returns_401(self, api_client):
+        """Invalid token returns 401."""
+        response = api_client.get(
+            "/api/mobile/customer/emergency-contacts/",
+            HTTP_AUTHORIZATION="Bearer invalid_token",
+        )
+        assert response.status_code == 401
+
+    def test_contacts_success(self, api_client, customer_token, emergency_contact, customer_person):
+        """Valid token returns emergency contacts."""
+        response = api_client.get(
+            "/api/mobile/customer/emergency-contacts/",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "contacts" in data
+        assert len(data["contacts"]) == 1
+        assert data["contacts"][0]["name"] == "Jane Diver"
+
+    def test_contacts_empty_list(self, api_client, customer_token, customer_person):
+        """Returns empty list if no emergency contacts."""
+        response = api_client.get(
+            "/api/mobile/customer/emergency-contacts/",
+            HTTP_AUTHORIZATION=f"Bearer {customer_token}",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["contacts"] == []

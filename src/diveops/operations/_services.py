@@ -440,6 +440,9 @@ def check_in(
     Raises:
         CheckInError: If check-in requirements not met
     """
+    # Lock booking to prevent race conditions on concurrent check-in attempts
+    booking = Booking.objects.select_for_update().get(pk=booking.pk)
+
     # Validate booking status
     if booking.status == "cancelled":
         raise CheckInError("Cannot check in a cancelled booking")
@@ -2258,6 +2261,9 @@ def create_revenue_settlement(
 
     from .models import SettlementRecord
 
+    # Lock booking to prevent race conditions on concurrent settlement attempts
+    booking = Booking.objects.select_for_update().get(pk=booking.pk)
+
     # Validate booking has price snapshot
     if booking.price_amount is None:
         raise ValueError(
@@ -2396,6 +2402,9 @@ def create_refund_settlement(
     from django_ledger.services import record_transaction
 
     from .models import SettlementRecord
+
+    # Lock booking to prevent race conditions on concurrent refund attempts
+    booking = Booking.objects.select_for_update().get(pk=booking.pk)
 
     # Validate refund_decision is provided
     if refund_decision is None:

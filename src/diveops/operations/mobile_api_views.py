@@ -33,6 +33,7 @@ from django_communication.models import (
     MessageStatus,
 )
 
+from .audit import Actions, log_diver_event
 from .services.chat_queries import ConversationQueryService, MessageQueryService
 from .models import (
     AppVersion,
@@ -1036,38 +1037,61 @@ class CustomerProfileView(View):
             return JsonResponse({"error": "No diver profile found"}, status=404)
 
         # Update gear sizing fields only (customers can't change other fields)
+        # Collect validation errors instead of silently ignoring
+        errors = {}
+
         if "weight_kg" in data:
             try:
                 diver.weight_kg = Decimal(str(data["weight_kg"])) if data["weight_kg"] else None
             except (InvalidOperation, TypeError):
-                pass
+                errors["weight_kg"] = "Must be a valid decimal number"
 
         if "height_cm" in data:
             try:
                 diver.height_cm = int(data["height_cm"]) if data["height_cm"] else None
             except (ValueError, TypeError):
-                pass
+                errors["height_cm"] = "Must be a valid integer"
 
         if "wetsuit_size" in data:
-            diver.wetsuit_size = str(data["wetsuit_size"])[:10]
+            value = str(data["wetsuit_size"])
+            if len(value) > 10:
+                errors["wetsuit_size"] = "Maximum 10 characters"
+            else:
+                diver.wetsuit_size = value
 
         if "bcd_size" in data:
-            diver.bcd_size = str(data["bcd_size"])[:10]
+            value = str(data["bcd_size"])
+            if len(value) > 10:
+                errors["bcd_size"] = "Maximum 10 characters"
+            else:
+                diver.bcd_size = value
 
         if "fin_size" in data:
-            diver.fin_size = str(data["fin_size"])[:20]
+            value = str(data["fin_size"])
+            if len(value) > 20:
+                errors["fin_size"] = "Maximum 20 characters"
+            else:
+                diver.fin_size = value
 
         if "mask_fit" in data:
-            diver.mask_fit = str(data["mask_fit"])[:50]
+            value = str(data["mask_fit"])
+            if len(value) > 50:
+                errors["mask_fit"] = "Maximum 50 characters"
+            else:
+                diver.mask_fit = value
 
         if "glove_size" in data:
-            diver.glove_size = str(data["glove_size"])[:10]
+            value = str(data["glove_size"])
+            if len(value) > 10:
+                errors["glove_size"] = "Maximum 10 characters"
+            else:
+                diver.glove_size = value
 
         if "weight_required_kg" in data:
             try:
                 diver.weight_required_kg = Decimal(str(data["weight_required_kg"])) if data["weight_required_kg"] else None
             except (InvalidOperation, TypeError):
-                pass
+                errors["weight_required_kg"] = "Must be a valid decimal number"
 
         if "gear_notes" in data:
             diver.gear_notes = str(data["gear_notes"])
@@ -1075,8 +1099,23 @@ class CustomerProfileView(View):
         if "equipment_ownership" in data:
             if data["equipment_ownership"] in ["none", "partial", "full"]:
                 diver.equipment_ownership = data["equipment_ownership"]
+            else:
+                errors["equipment_ownership"] = "Must be one of: none, partial, full"
+
+        # Return validation errors if any
+        if errors:
+            return JsonResponse({"errors": errors}, status=400)
 
         diver.save()
+
+        # Log audit event for profile update
+        log_diver_event(
+            action=Actions.DIVER_UPDATED,
+            diver=diver,
+            actor=request.user,
+            data={"updated_fields": list(data.keys()), "source": "mobile_app"},
+            request=request,
+        )
 
         # Return updated profile (call GET logic)
         return self.get(request)

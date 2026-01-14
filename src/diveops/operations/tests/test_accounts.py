@@ -214,42 +214,106 @@ class TestCacheManagement:
         # No exception means success
 
 
+@pytest.mark.django_db
 class TestSeedAccountsIdempotency:
     """Tests for seed_accounts idempotency."""
 
-    # These tests would require database access and are marked for integration testing
-    # In a full test suite, you would use @pytest.mark.django_db
+    @pytest.fixture
+    def dive_shop(self):
+        """Create a dive shop organization."""
+        from django_parties.models import Organization
+        return Organization.objects.create(
+            name="Test Dive Shop",
+            org_type="dive_shop",
+        )
 
-    @pytest.mark.skip(reason="Requires database integration")
-    def test_seed_accounts_creates_all_types(self):
+    @pytest.fixture
+    def vendor(self):
+        """Create a vendor organization."""
+        from django_parties.models import Organization
+        return Organization.objects.create(
+            name="Test Vendor",
+            org_type="vendor",
+        )
+
+    def test_seed_accounts_creates_all_types(self, dive_shop):
         """seed_accounts should create all account types."""
-        pass
+        account_set = seed_accounts(dive_shop, "MXN")
 
-    @pytest.mark.skip(reason="Requires database integration")
-    def test_seed_accounts_idempotent(self):
+        # Verify all required accounts were created
+        assert account_set.is_complete()
+        for key in REQUIRED_ACCOUNT_KEYS:
+            account = getattr(account_set, key)
+            assert account is not None, f"Missing account: {key}"
+
+    def test_seed_accounts_idempotent(self, dive_shop):
         """Calling seed_accounts twice should not duplicate accounts."""
-        pass
+        from django_ledger.models import AccountModel
 
-    @pytest.mark.skip(reason="Requires database integration")
-    def test_seed_accounts_creates_vendor_payables(self):
+        # Seed once
+        account_set1 = seed_accounts(dive_shop, "MXN")
+
+        # Count accounts
+        count_after_first = AccountModel.objects.count()
+
+        # Seed again
+        account_set2 = seed_accounts(dive_shop, "MXN")
+
+        # Count should be the same
+        count_after_second = AccountModel.objects.count()
+        assert count_after_first == count_after_second
+
+        # Same accounts returned
+        for key in REQUIRED_ACCOUNT_KEYS:
+            acct1 = getattr(account_set1, key)
+            acct2 = getattr(account_set2, key)
+            assert acct1.pk == acct2.pk
+
+    def test_seed_accounts_creates_vendor_payables(self, dive_shop, vendor):
         """seed_accounts with vendors creates per-vendor AP accounts."""
-        pass
+        account_set = seed_accounts(dive_shop, "MXN", vendors=[vendor])
+
+        # Get vendor payable account
+        vendor_ap = get_vendor_payable_account(dive_shop, vendor, "MXN")
+        assert vendor_ap is not None
+        assert vendor.name in vendor_ap.name
 
 
+@pytest.mark.django_db
 class TestGetRequiredAccountsValidation:
     """Tests for get_required_accounts validation."""
 
-    @pytest.mark.skip(reason="Requires database integration")
-    def test_raises_error_when_accounts_not_seeded(self):
+    @pytest.fixture
+    def dive_shop(self):
+        """Create a dive shop organization."""
+        from django_parties.models import Organization
+        return Organization.objects.create(
+            name="Validation Test Shop",
+            org_type="dive_shop",
+        )
+
+    def test_raises_error_when_accounts_not_seeded(self, dive_shop):
         """get_required_accounts raises AccountConfigurationError when not seeded."""
-        pass
+        clear_account_cache()  # Ensure fresh state
+        with pytest.raises(AccountConfigurationError):
+            get_required_accounts(dive_shop, "MXN", auto_create=False)
 
-    @pytest.mark.skip(reason="Requires database integration")
-    def test_returns_account_set_when_seeded(self):
+    def test_returns_account_set_when_seeded(self, dive_shop):
         """get_required_accounts returns AccountSet when accounts are seeded."""
-        pass
+        # Seed first
+        seed_accounts(dive_shop, "MXN")
 
-    @pytest.mark.skip(reason="Requires database integration")
-    def test_auto_create_seeds_accounts(self):
+        # Now get should work
+        account_set = get_required_accounts(dive_shop, "MXN", auto_create=False)
+        assert isinstance(account_set, AccountSet)
+        assert account_set.is_complete()
+
+    def test_auto_create_seeds_accounts(self, dive_shop):
         """get_required_accounts with auto_create=True creates missing accounts."""
-        pass
+        clear_account_cache()  # Ensure fresh state
+
+        # This should create accounts instead of raising
+        account_set = get_required_accounts(dive_shop, "MXN", auto_create=True)
+
+        assert isinstance(account_set, AccountSet)
+        assert account_set.is_complete()
