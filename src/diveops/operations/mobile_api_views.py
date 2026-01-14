@@ -29,8 +29,11 @@ from django_communication.models import (
     ConversationStatus,
     FCMDevice,
     Message,
+    MessageDirection,
+    MessageStatus,
 )
 
+from .services.chat_queries import ConversationQueryService, MessageQueryService
 from .models import (
     AppVersion,
     Booking,
@@ -227,61 +230,46 @@ class MobileConversationsView(View):
     Headers: Authorization: Bearer <token>
 
     Returns list of conversations with last message and unread count.
+
+    Uses ConversationQueryService to avoid N+1 queries - all conversation
+    data is fetched in a single optimized query with Subquery annotations.
     """
 
     @method_decorator(require_auth_token)
     def get(self, request):
-        from django_communication.models import ConversationParticipant
-
-        # Get all active conversations (not filtered by content type)
-        # This includes conversations for leads, divers, bookings, etc.
-        conversations = (
-            Conversation.objects.filter(deleted_at__isnull=True)
-            .exclude(status=ConversationStatus.CLOSED)
-            .select_related("related_content_type")
-            .prefetch_related("participants__person")
-            .order_by("-updated_at")[:100]
+        # Use optimized service - single query with Subquery annotations
+        # This eliminates N+1 queries for last_message and unread_count
+        conversations = ConversationQueryService.list_for_mobile(
+            user=request.user,
+            limit=100,
         )
+
+        # Batch fetch all persons to avoid N+1 queries for person data
+        person_ids = [conv.related_object_id for conv in conversations if conv.related_object_id]
+        persons_by_id = {
+            str(p.pk): p
+            for p in Person.objects.filter(
+                pk__in=person_ids,
+                deleted_at__isnull=True,
+            )
+        }
 
         result = []
         for conv in conversations:
-            # Find the customer participant (the person we're chatting with)
-            customer_participant = conv.participants.filter(
-                role="customer",
-                person__deleted_at__isnull=True,
-            ).select_related("person").first()
-
-            if not customer_participant:
-                # Fallback: try to get person from related_object if it's a Person
-                person_ct = ContentType.objects.get_for_model(Person)
-                if conv.related_content_type == person_ct:
-                    person = Person.objects.filter(
-                        pk=conv.related_object_id,
-                        deleted_at__isnull=True,
-                    ).first()
-                else:
-                    continue
-            else:
-                person = customer_participant.person
-
+            # Get person from batch-fetched dict
+            person = persons_by_id.get(conv.related_object_id)
             if not person:
                 continue
 
-            # Get last message
-            last_msg = (
-                Message.objects.filter(conversation=conv)
-                .order_by("-created_at")
-                .first()
-            )
+            # Use annotated fields from the optimized query (no additional queries!)
+            last_message_preview = conv.last_message_preview or ""
+            last_message_at = conv.last_message_at_annotated
+            needs_reply = conv.last_message_direction == MessageDirection.INBOUND
+            unread_count = getattr(conv, "unread_count", 0) or 0
 
-            # Count unread (inbound messages not marked as read)
-            unread_count = Message.objects.filter(
-                conversation=conv,
-                direction="inbound",
-            ).exclude(status="read").count()
-
-            # Needs reply if last message was inbound
-            needs_reply = last_msg and last_msg.direction == "inbound"
+            # Truncate preview
+            if len(last_message_preview) > 100:
+                last_message_preview = last_message_preview[:100]
 
             result.append({
                 "id": str(conv.pk),
@@ -289,8 +277,8 @@ class MobileConversationsView(View):
                 "name": f"{person.first_name} {person.last_name}".strip() or person.email or "Unknown",
                 "email": person.email or "",
                 "initials": _get_initials(person),
-                "last_message": last_msg.body_text[:100] if last_msg else "",
-                "last_message_time": last_msg.created_at.isoformat() if last_msg else None,
+                "last_message": last_message_preview,
+                "last_message_time": last_message_at.isoformat() if last_message_at else None,
                 "needs_reply": needs_reply,
                 "unread_count": unread_count,
                 "status": conv.status,
@@ -307,6 +295,8 @@ class MobileMessagesView(View):
     Headers: Authorization: Bearer <token>
 
     Returns messages in chronological order.
+
+    Uses MessageQueryService for consistent message retrieval.
     """
 
     @method_decorator(require_auth_token)
@@ -319,28 +309,22 @@ class MobileMessagesView(View):
         except Conversation.DoesNotExist:
             return JsonResponse({"error": "Conversation not found"}, status=404)
 
-        messages = (
-            Message.objects.filter(conversation=conversation)
-            .order_by("created_at")[:200]
+        # Use service for message retrieval
+        messages = MessageQueryService.get_messages(
+            conversation=conversation,
+            limit=MessageQueryService.DEFAULT_LIMIT_MOBILE,
         )
 
-        # Mark inbound messages as read
-        from django.utils import timezone
-        Message.objects.filter(
-            conversation=conversation,
-            direction="inbound",
-        ).exclude(status="read").update(
-            status="read",
-            read_at=timezone.now(),
-        )
+        # Mark inbound messages as read using service
+        MessageQueryService.mark_inbound_read(conversation)
 
         result = []
         for msg in messages:
             result.append({
                 "id": str(msg.pk),
-                "body": msg.body_text or "",  # Ensure never None
-                "direction": msg.direction or "inbound",
-                "status": msg.status or "sent",
+                "body": msg.body_text or "",
+                "direction": msg.direction or MessageDirection.INBOUND,
+                "status": msg.status or MessageStatus.SENT,
                 "created_at": msg.created_at.isoformat() if msg.created_at else None,
                 "sender_name": _get_sender_name(msg),
             })

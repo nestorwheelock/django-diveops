@@ -3,16 +3,19 @@
 These endpoints power the floating chat widget and chat PWA in the staff portal.
 """
 
-from django.contrib.contenttypes.models import ContentType
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+from django.utils.timesince import timesince
 from django.views import View
 from django.views.generic import TemplateView
 
 from diveops.core.mixins import ImpersonationAwareStaffMixin as StaffPortalMixin
 
 from django_parties.models import Person
-from django_communication.models import Conversation, ConversationStatus, Message
+from django_communication.models import MessageDirection, MessageStatus
+
+from .services.chat_queries import ConversationQueryService, MessageQueryService
 
 
 class ChatInboxView(StaffPortalMixin, TemplateView):
@@ -33,32 +36,15 @@ class ChatThreadView(StaffPortalMixin, View):
 
 
 class StaffChatConversationsAPIView(StaffPortalMixin, View):
-    """List conversations with leads for the staff chat widget."""
+    """List conversations with leads for the staff chat widget.
+
+    Uses ConversationQueryService to avoid N+1 queries - all conversation
+    data including last message is fetched in a single optimized query.
+    """
 
     def get(self, request):
-        person_ct = ContentType.objects.get_for_model(Person)
-
         # Get status filter from query params (default: show active and archived)
-        status_filter = request.GET.get("status", "").lower()
-
-        # Build base query for conversations linked to Person records
-        queryset = Conversation.objects.filter(
-            related_content_type=person_ct,
-            deleted_at__isnull=True,
-        )
-
-        # Apply status filter
-        if status_filter == "active":
-            queryset = queryset.filter(status=ConversationStatus.ACTIVE)
-        elif status_filter == "archived":
-            queryset = queryset.filter(status=ConversationStatus.ARCHIVED)
-        elif status_filter == "closed":
-            queryset = queryset.filter(status=ConversationStatus.CLOSED)
-        elif status_filter == "all":
-            pass  # No filter, show all statuses
-        else:
-            # Default: show active and archived (exclude only closed)
-            queryset = queryset.exclude(status=ConversationStatus.CLOSED)
+        status_filter = request.GET.get("status", "").lower() or "default"
 
         # Get limit from query params (default 100, max 200)
         try:
@@ -66,13 +52,15 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
         except (ValueError, TypeError):
             limit = 100
 
-        conversations = (
-            queryset
-            .select_related("related_content_type")
-            .order_by("-updated_at")[:limit]
+        # Use optimized service - single query with Subquery annotations
+        # This replaces the N+1 pattern where each conversation fetched last_msg separately
+        conversations = ConversationQueryService.list_for_leads(
+            status=status_filter if status_filter != "default" else "all",
+            limit=limit,
+            exclude_closed=(status_filter == "default"),
         )
 
-        # Batch fetch all persons to avoid N+1 queries
+        # Batch fetch all persons to avoid N+1 queries for person data
         person_ids = [conv.related_object_id for conv in conversations]
         persons_by_id = {
             str(p.pk): p
@@ -83,29 +71,22 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
         }
 
         result = []
+        now = timezone.now()
+
         for conv in conversations:
             # Get the Person for this conversation
             person = persons_by_id.get(conv.related_object_id)
             if not person:
                 continue
 
-            # Get last message
-            last_msg = (
-                Message.objects.filter(conversation=conv)
-                .order_by("-created_at")
-                .first()
-            )
+            # Use annotated fields from the optimized query (no additional queries!)
+            last_message_preview = conv.last_message_preview or ""
+            last_message_at = conv.last_message_at_annotated
+            needs_reply = conv.last_message_direction == MessageDirection.INBOUND
 
-            # Check if needs reply (last message was inbound)
-            needs_reply = last_msg and last_msg.direction == "inbound"
-
-            # Format time
-            if last_msg:
-                from django.utils import timezone
-                from django.utils.timesince import timesince
-
-                time_str = timesince(last_msg.created_at, timezone.now())
-                # Simplify "1 day, 2 hours" to "1 day"
+            # Format time from annotated timestamp
+            if last_message_at:
+                time_str = timesince(last_message_at, now)
                 time_str = time_str.split(",")[0] + " ago"
             else:
                 time_str = ""
@@ -125,13 +106,17 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
             except Exception:
                 is_diver = False
 
+            # Truncate preview
+            if len(last_message_preview) > 50:
+                last_message_preview = last_message_preview[:50] + "..."
+
             result.append({
                 "person_id": str(person.pk),
                 "conversation_id": str(conv.pk),
                 "name": f"{person.first_name} {person.last_name}".strip() or person.email or "Unknown",
                 "email": person.email or "",
                 "initials": initials,
-                "last_message": last_msg.body_text[:50] + "..." if last_msg and len(last_msg.body_text) > 50 else (last_msg.body_text if last_msg else ""),
+                "last_message": last_message_preview,
                 "last_message_time": time_str,
                 "needs_reply": needs_reply,
                 "lead_status": person.lead_status,
@@ -143,33 +128,26 @@ class StaffChatConversationsAPIView(StaffPortalMixin, View):
 
 
 class StaffChatMessagesAPIView(StaffPortalMixin, View):
-    """Get messages for a specific lead conversation."""
+    """Get messages for a specific lead conversation.
+
+    Uses MessageQueryService for consistent message retrieval.
+    """
 
     def get(self, request, person_id):
-        person_ct = ContentType.objects.get_for_model(Person)
-
-        # Find conversation for this person
-        conversation = Conversation.objects.filter(
-            related_content_type=person_ct,
-            related_object_id=str(person_id),
-            deleted_at__isnull=True,
-        ).first()
+        # Use service to get messages - handles conversation lookup
+        conversation, messages = MessageQueryService.get_messages_for_lead(
+            person_id=person_id,
+            limit=MessageQueryService.DEFAULT_LIMIT_STAFF,
+        )
 
         if not conversation:
             return JsonResponse({"messages": []})
 
-        # Get messages
-        messages = (
-            Message.objects.filter(conversation=conversation)
-            .order_by("created_at")[:100]
-        )
-
+        now = timezone.now()
         result = []
-        for msg in messages:
-            from django.utils import timezone
-            from django.utils.timesince import timesince
 
-            time_str = timesince(msg.created_at, timezone.now())
+        for msg in messages:
+            time_str = timesince(msg.created_at, now)
             time_str = time_str.split(",")[0] + " ago"
 
             result.append({
@@ -188,33 +166,22 @@ class StaffChatMessagesAPIView(StaffPortalMixin, View):
 
 
 class MarkMessagesReadAPIView(StaffPortalMixin, View):
-    """Mark messages as read when viewed by staff."""
+    """Mark messages as read when viewed by staff.
+
+    Uses MessageQueryService.mark_inbound_read for consistent status handling.
+    """
 
     def post(self, request, person_id):
-        from django.utils import timezone
-        from django.views.decorators.csrf import csrf_exempt
-        import json
-
-        person_ct = ContentType.objects.get_for_model(Person)
-
-        # Find conversation for this person
-        conversation = Conversation.objects.filter(
-            related_content_type=person_ct,
-            related_object_id=str(person_id),
-            deleted_at__isnull=True,
-        ).first()
+        # Get conversation for this lead
+        conversation, _ = MessageQueryService.get_messages_for_lead(
+            person_id=person_id,
+            limit=1,  # Just need to find the conversation
+        )
 
         if not conversation:
             return JsonResponse({"error": "Conversation not found"}, status=404)
 
-        # Mark all inbound messages as read (staff is reading visitor's messages)
-        updated = Message.objects.filter(
-            conversation=conversation,
-            direction="inbound",
-            status__in=["queued", "sending", "sent", "delivered"],
-        ).update(
-            status="read",
-            read_at=timezone.now(),
-        )
+        # Mark all inbound messages as read using service
+        updated = MessageQueryService.mark_inbound_read(conversation)
 
         return JsonResponse({"marked_read": updated})
